@@ -1,9 +1,8 @@
 import { userAuthCheck, UnauthorizedResponse } from "../utils/auth/userAuth";
-import { fetchUploadConfig, fetchSecurityConfig, fetchPageConfig } from "../utils/sysConfig";
+import { fetchUploadConfig, fetchSecurityConfig } from "../utils/sysConfig";
 import {
-    createResponse, getUploadIp, getIPAddress, resolveFileExt,
-    moderateContent, purgeCDNCache, isBlockedUploadIp, buildUniqueFileId, endUpload, getImageDimensions,
-    sanitizeUploadFolder
+    createResponse, getUploadIp, resolveFileExt,
+    purgeCDNCache, isBlockedUploadIp, buildUniqueFileId, endUpload, getImageDimensions
 } from "./uploadTools";
 import { initializeChunkedUpload, handleChunkUpload, uploadLargeFileToTelegram, handleCleanupRequest } from "./chunkUpload";
 import { handleChunkMerge } from "./chunkMerge";
@@ -89,15 +88,7 @@ async function processFileUpload(context, formdata = null) {
     // 获得指定的渠道名称（可选）
     const urlParamChannelName = url.searchParams.get('channelName');
 
-    // 获取IP地址
     const uploadIp = getUploadIp(request);
-    const ipAddress = await getIPAddress(context.env, uploadIp, context.securityConfig);
-
-    // 获取上传文件夹路径
-    let uploadFolder = url.searchParams.get('uploadFolder') || '';
-
-    // 路径安全性处理：防止路径穿越和特殊字符注入
-    uploadFolder = sanitizeUploadFolder(uploadFolder);
 
     let uploadChannel = 'TelegramNew';
     switch (urlParamUploadChannel) {
@@ -155,29 +146,15 @@ async function processFileUpload(context, formdata = null) {
         }
     }
 
-    // 如果上传文件夹路径为空，尝试从文件名中获取
-    if (uploadFolder === '' || uploadFolder === null || uploadFolder === undefined) {
-        uploadFolder = fileName.split('/').slice(0, -1).join('/');
-        // 对从文件名中提取的路径也进行安全处理
-        uploadFolder = sanitizeUploadFolder(uploadFolder);
-        // 从文件名中去除路径信息，只保留文件名部分
-        fileName = fileName.split('/').pop();
-    }
-    // uploadFolder 已经过 sanitizeUploadFolder 处理，直接使用
-    const normalizedFolder = uploadFolder;
-
+    // 上传目录已固定为根目录；只保留文件名，忽略客户端路径。
+    fileName = fileName.split('/').pop();
     const metadata = {
         FileName: fileName,
         FileType: fileType,
         FileSize: fileSize,
         FileSizeBytes: fileSizeBytes,
         UploadIP: uploadIp,
-        UploadAddress: ipAddress,
-        ListType: "None",
         TimeStamp: time,
-        Label: "None",
-        Directory: normalizedFolder === '' ? '' : normalizedFolder + '/',
-        Tags: []
     };
 
     // 添加图片尺寸信息
@@ -200,11 +177,8 @@ async function processFileUpload(context, formdata = null) {
         returnLink = `/file/${fullId}`;
     }
 
-    // 构建公开访问链接（使用 urlPrefix 配置）
-    const pageConfig = await fetchPageConfig(context.env);
-    const urlPrefixConfig = pageConfig.config?.find(c => c.id === 'urlPrefix');
-    const urlPrefix = urlPrefixConfig?.value || '';
-    context.publicUrl = urlPrefix ? `${urlPrefix.replace(/\/+$/, '')}/${fullId}` : '';
+    // 域名使用当前请求来源，公开路径只保留固定的 /file/ 后缀。
+    context.publicUrl = `${url.origin}/file/${fullId}`;
 
     /* ====================================不同渠道上传======================================= */
     // 出错是否切换渠道自动重试，默认开启
@@ -290,7 +264,7 @@ async function uploadFileToCloudflareR2(context, fullId, metadata, returnLink) {
     const db = getDatabase(env);
 
     // 检查R2数据库是否配置
-    if (typeof env.img_r2 == "undefined" || env.img_r2 == null || env.img_r2 == "") {
+    if (typeof env.R2 == "undefined" || env.R2 == null || env.R2 == "") {
         return createResponse('Error: Please configure R2 database', { status: 500 });
     }
 
@@ -309,7 +283,7 @@ async function uploadFileToCloudflareR2(context, fullId, metadata, returnLink) {
         r2Channel = r2Settings.channels[0];
     }
 
-    const R2DataBase = env.img_r2;
+    const R2DataBase = env.R2;
 
     // 写入R2数据库
     await R2DataBase.put(fullId, formdata.get('file'));
@@ -317,11 +291,6 @@ async function uploadFileToCloudflareR2(context, fullId, metadata, returnLink) {
     // 更新metadata
     metadata.Channel = "CloudflareR2";
     metadata.ChannelName = r2Channel.name || "R2_env";
-
-    // 图像审查，采用R2的publicUrl
-    const R2PublicUrl = r2Channel.publicUrl;
-    let moderateUrl = `${R2PublicUrl}/${fullId}`;
-    metadata.Label = await moderateContent(env, moderateUrl);
 
     // 写入数据库
     try {
@@ -415,7 +384,6 @@ async function uploadFileToS3(context, fullId, metadata, returnLink) {
 
             const moderateUrl = `https://${url.hostname}/file/${fullId}`;
             await purgeCDNCache(env, moderateUrl, url);
-            metadata.Label = await moderateContent(env, moderateUrl);
         }
 
         // 写入数据库
@@ -527,7 +495,6 @@ async function uploadFileToTelegram(context, fullId, metadata, fileExt, fileName
         // 图像审查（使用代理域名或官方域名）
         const moderateDomain = tgProxyUrl ? `https://${tgProxyUrl}` : 'https://api.telegram.org';
         const moderateUrl = `${moderateDomain}/file/bot${tgBotToken}/${filePath}`;
-        metadata.Label = await moderateContent(env, moderateUrl);
 
         // 更新metadata，写入KV数据库
         try {
@@ -648,7 +615,6 @@ async function uploadFileToDiscord(context, fullId, metadata, returnLink) {
         if (discordChannel.proxyUrl) {
             moderateUrl = fileInfo.url.replace('https://cdn.discordapp.com', `https://${discordChannel.proxyUrl}`);
         }
-        metadata.Label = await moderateContent(env, moderateUrl);
 
         // 写入 KV 数据库
         try {
@@ -749,7 +715,6 @@ async function uploadFileToHuggingFace(context, fullId, metadata, returnLink) {
         if (uploadModerate && uploadModerate.enabled) {
             if (!hfChannel.isPrivate) {
                 // 公开仓库：直接通过公开URL访问进行审查，只写入1次KV
-                metadata.Label = await moderateContent(env, result.fileUrl);
             } else {
                 // 私有仓库：先写入KV，再通过自己的域名访问进行审查
                 try {
@@ -760,7 +725,6 @@ async function uploadFileToHuggingFace(context, fullId, metadata, returnLink) {
                 
                 const moderateUrl = `https://${context.url.hostname}/file/${fullId}`;
                 await purgeCDNCache(env, moderateUrl, context.url);
-                metadata.Label = await moderateContent(env, moderateUrl);
             }
         }
 
@@ -828,7 +792,6 @@ async function uploadFileToWebDAV(context, fullId, metadata, returnLink) {
         const uploadModerate = securityConfig.upload?.moderate;
         if (uploadModerate && uploadModerate.enabled) {
             if (webdavPublicUrl) {
-                metadata.Label = await moderateContent(env, webdavPublicUrl);
             } else {
                 try {
                     await db.put(fullId, "", { metadata });
@@ -838,7 +801,6 @@ async function uploadFileToWebDAV(context, fullId, metadata, returnLink) {
 
                 const moderateUrl = `https://${url.hostname}/file/${fullId}`;
                 await purgeCDNCache(env, moderateUrl, url);
-                metadata.Label = await moderateContent(env, moderateUrl);
             }
         }
 

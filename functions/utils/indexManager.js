@@ -10,8 +10,7 @@
  *     lastUpdated: 1640995200000,
  *     totalCount: 1000,
  *     lastOperationId: "operation_timestamp_uuid",
- *     chunkCount: 3,
- *     chunkSize: 10000
+ *     chunkCount: 3
  *   }
  * 
  * 索引分块：
@@ -47,6 +46,21 @@ const INDEX_CHUNK_SIZE_D1 = 500; // D1 数据库分块大小
 const INDEX_CHUNK_SIZE_KV = 5000; // KV 存储分块大小
 const KV_LIST_LIMIT = 1000; // 数据库列出批量大小
 const BATCH_SIZE = 10; // 批量处理大小
+
+async function readIndexMetadata(db) {
+    const metadataStr = await db.get(INDEX_META_KEY);
+    if (!metadataStr) {
+        return null;
+    }
+
+    const metadata = JSON.parse(metadataStr);
+    if (Object.hasOwn(metadata, 'chunkSize')) {
+        delete metadata.chunkSize;
+        await db.put(INDEX_META_KEY, JSON.stringify(metadata));
+    }
+
+    return metadata;
+}
 
 /**
  * 根据数据库类型获取索引分块大小
@@ -1257,8 +1271,8 @@ export async function getIndexMeta(context) {
     const db = getDatabase(env);
 
     try {
-        const metadataStr = await db.get(INDEX_META_KEY);
-        if (!metadataStr) {
+        const metadata = await readIndexMetadata(db);
+        if (!metadata) {
             return {
                 success: false,
                 totalCount: 0,
@@ -1267,7 +1281,6 @@ export async function getIndexMeta(context) {
             };
         }
 
-        const metadata = JSON.parse(metadataStr);
         return {
             success: true,
             totalCount: metadata.totalCount || 0,
@@ -1925,8 +1938,7 @@ async function saveChunkedIndex(context, index) {
             totalSizeMB: Math.round(totalSizeMB * 100) / 100,
             channelStats,
             lastOperationId: index.lastOperationId,
-            chunkCount: chunks.length,
-            chunkSize: chunkSize
+            chunkCount: chunks.length
         };
         
         await db.put(INDEX_META_KEY, JSON.stringify(metadata));
@@ -1959,12 +1971,11 @@ async function loadChunkedIndex(context) {
 
     try {
         // 首先获取元数据
-        const metadataStr = await db.get(INDEX_META_KEY);
-        if (!metadataStr) {
+        const metadata = await readIndexMetadata(db);
+        if (!metadata) {
             throw new Error('Index metadata not found');
         }
         
-        const metadata = JSON.parse(metadataStr);
         const files = [];
         
         // 并行加载所有分块
@@ -2107,16 +2118,14 @@ export async function getIndexStorageStats(context) {
 
     try {
         // 获取元数据
-        const metadataStr = await db.get(INDEX_META_KEY);
-        if (!metadataStr) {
+        const metadata = await readIndexMetadata(db);
+        if (!metadata) {
             return {
                 success: false,
                 error: 'No chunked index metadata found',
                 isChunked: false
             };
         }
-        
-        const metadata = JSON.parse(metadataStr);
         
         // 检查各个分块的存在情况
         const chunkChecks = [];

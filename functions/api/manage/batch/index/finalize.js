@@ -237,7 +237,6 @@ async function saveIndex(db, files, env) {
       channelStats,
       lastOperationId: null, // 重建后清除操作 ID
       chunkCount: chunks.length,
-      chunkSize: chunkSize,
     };
 
     await db.put(INDEX_META_KEY, JSON.stringify(metadata));

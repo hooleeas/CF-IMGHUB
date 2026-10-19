@@ -13,6 +13,7 @@ import { join, resolve, dirname } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { SqliteD1 } from './sqliteD1.js';
 import { LocalR2Storage } from './r2Storage.js';
+import { getSiteConfig } from '../../functions/utils/siteConfig.js';
 
 const NativeResponse = globalThis.Response;
 
@@ -119,8 +120,9 @@ const r2Storage = new LocalR2Storage(join(DATA_DIR, 'r2'));
 function createEnv() {
     return {
         ...process.env,
-        img_d1: sqliteD1,
-        img_r2: r2Storage,
+        D1: sqliteD1,
+        R2: r2Storage,
+        KV: null,
     };
 }
 
@@ -336,6 +338,14 @@ app.all('*', async (c, next) => {
     const url = new URL(c.req.url);
     const pathname = url.pathname;
 
+    if (pathname === '/admin' || pathname === '/admin/') {
+        const { adminPath } = await getSiteConfig(createEnv());
+        if (adminPath !== '/admin') {
+            url.pathname = adminPath;
+            return c.redirect(`${url.pathname}${url.search}`, 302);
+        }
+    }
+
     // 检查是否是 function 路径
     if (isFunctionPath(pathname)) {
         try {
@@ -381,6 +391,8 @@ app.use('/*', serveStatic({
     root: './frontend-dist',
     rewriteRequestPath: (path) => path,
 }));
+
+app.all('/api/*', (c) => c.text('Not Found', 404));
 
 // 默认返回 index.html（SPA 支持）
 app.get('*', async (c) => {

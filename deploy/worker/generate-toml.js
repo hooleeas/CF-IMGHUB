@@ -3,7 +3,7 @@
  * 用于 GitHub Actions 部署，从 Secrets/Variables 读取配置
  * 
  * 环境变量：
- *   WORKER_NAME      - Worker 名称（默认 cloudflare-imgbed）
+ *   WORKER_NAME      - Worker 名称（默认 cf-imghub）
  *   D1_DATABASE_ID   - D1 数据库 ID
  *   KV_NAMESPACE_ID  - KV 命名空间 ID
  *   R2_BUCKET_NAME   - R2 存储桶名称
@@ -18,7 +18,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const outputPath = join(__dirname, 'wrangler.toml');
 
 const env = process.env;
-const name = env.WORKER_NAME || 'cloudflare-imgbed';
+const name = env.WORKER_NAME || 'cf-imghub';
 
 let toml = `name = "${name}"
 main = "index.js"
@@ -35,7 +35,7 @@ not_found_handling = "single-page-application"
 if (env.D1_DATABASE_ID) {
     toml += `
 [[d1_databases]]
-binding = "img_d1"
+binding = "D1"
 database_name = "img_d1"
 database_id = "${env.D1_DATABASE_ID}"
 `;
@@ -45,7 +45,7 @@ database_id = "${env.D1_DATABASE_ID}"
 if (env.KV_NAMESPACE_ID) {
     toml += `
 [[kv_namespaces]]
-binding = "img_url"
+binding = "KV"
 id = "${env.KV_NAMESPACE_ID}"
 `;
 }
@@ -54,7 +54,7 @@ id = "${env.KV_NAMESPACE_ID}"
 if (env.R2_BUCKET_NAME) {
     toml += `
 [[r2_buckets]]
-binding = "img_r2"
+binding = "R2"
 bucket_name = "${env.R2_BUCKET_NAME}"
 `;
 }
@@ -62,12 +62,19 @@ bucket_name = "${env.R2_BUCKET_NAME}"
 // 业务环境变量（从 JSON 解析）
 if (env.WORKER_VARS) {
     try {
-        const vars = JSON.parse(env.WORKER_VARS);
-        const entries = Object.entries(vars);
-        if (entries.length > 0) {
+        const WORKER_VARIABLES = JSON.parse(env.WORKER_VARS);
+        const ENTRIES = Object.entries(WORKER_VARIABLES).map(([KEY, VALUE]) => [String(KEY).toUpperCase(), VALUE]);
+        const INVALID_NAME = ENTRIES.find(([KEY]) => !/^[A-Z_][A-Z0-9_]*$/.test(KEY));
+        if (INVALID_NAME) {
+            throw new Error(`Invalid Worker variable name: ${INVALID_NAME[0]}`);
+        }
+        if (new Set(ENTRIES.map(([KEY]) => KEY)).size !== ENTRIES.length) {
+            throw new Error('WORKER_VARS contains duplicate names after uppercase normalization');
+        }
+        if (ENTRIES.length > 0) {
             toml += '\n[vars]\n';
-            for (const [key, value] of entries) {
-                toml += `${key} = "${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"\n`;
+            for (const [KEY, VALUE] of ENTRIES) {
+                toml += `${KEY} = "${String(VALUE).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"\n`;
             }
         }
     } catch (e) {

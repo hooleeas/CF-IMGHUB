@@ -1,5 +1,5 @@
 import { getUploadConfig } from '../api/manage/sysConfig/upload.js';
-import { getSecurityConfig } from '../api/manage/sysConfig/security.js';
+import { getSecurityConfig } from './auth/securityConfig.js';
 import { getPageConfig } from '../api/manage/sysConfig/page.js';
 import { getOthersConfig } from '../api/manage/sysConfig/others.js';
 import { getDatabase } from './databaseAdapter.js';
@@ -103,14 +103,6 @@ export async function fetchSecurityConfig(env, options = {}) {
             auth: {
                 user: { authCode: "" },
                 admin: { adminUsername: "", adminPassword: "" }
-            },
-            upload: {
-                moderate: { enabled: false, channel: "default", moderateContentApiKey: "", nsfwApiPath: "" },
-                ipQuery: {
-                    enabled: false,
-                    channel: "customApi",
-                    customApi: { url: "", params: [{ key: "ip", value: "{ip}" }], responseFields: [] }
-                }
             },
             access: { allowedDomains: "", whiteListMode: false, sessionSecure: false, userSessionMaxAge: 14, adminSessionMaxAge: 14 }
         };

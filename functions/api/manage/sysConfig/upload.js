@@ -95,13 +95,13 @@ export async function getUploadConfig(db, env) {
     const cfr2 = {}
     const cfr2Channels = []
     cfr2.channels = cfr2Channels
-    if (env.img_r2) {
+    if (env.R2) {
         cfr2Channels.push({
             id: 1,
             name: 'R2_env',
             type: 'cfr2',
             savePath: 'environment variable',
-            publicUrl: env.R2PublicUrl,
+            publicUrl: env.R2_PUBLIC_URL,
             enabled: true,
             fixed: true,
         })

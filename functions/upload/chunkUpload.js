@@ -1,10 +1,9 @@
 /* ======= 客户端分块上传处理 ======= */
-import { createResponse, selectConsistentChannel, getUploadIp, getIPAddress, buildUniqueFileId, endUpload } from './uploadTools';
+import { createResponse, selectConsistentChannel, getUploadIp, buildUniqueFileId, endUpload } from './uploadTools';
 import { TelegramAPI } from '../utils/storage/telegramAPI';
 import { DiscordAPI } from '../utils/storage/discordAPI';
 import { S3Client, CreateMultipartUploadCommand, UploadPartCommand, AbortMultipartUploadCommand } from "@aws-sdk/client-s3";
 import { getDatabase, checkDatabaseConfig } from '../utils/databaseAdapter.js';
-import { fetchPageConfig } from '../utils/sysConfig.js';
 
 // 初始化分块上传
 export async function initializeChunkedUpload(context) {
@@ -30,7 +29,7 @@ export async function initializeChunkedUpload(context) {
 
         // 获取上传IP
         const uploadIp = getUploadIp(request);
-        const ipAddress = await getIPAddress(env, uploadIp, context.securityConfig);
+        const ipAddress = '未知';
 
         // 获取上传渠道
         const uploadChannel = url.searchParams.get('uploadChannel') || 'telegram';
@@ -374,7 +373,7 @@ async function uploadSingleChunkToR2Multipart(context, chunkData, chunkIndex, to
             return { success: false, error: 'No R2 channel provided' };
         }
 
-        const R2DataBase = env.img_r2;
+        const R2DataBase = env.R2;
         const multipartKey = `multipart_${uploadId}`;
 
         let finalFileId;
@@ -979,7 +978,7 @@ export async function cleanupFailedMultipartUploads(context, uploadId, uploadCha
 
         if (uploadChannel === 'cfr2') {
             // 清理R2 multipart upload
-            const R2DataBase = env.img_r2;
+            const R2DataBase = env.R2;
             const multipartUpload = R2DataBase.resumeMultipartUpload(multipartInfo.key, multipartInfo.uploadId);
             await multipartUpload.abort();
 
@@ -1272,14 +1271,8 @@ export async function uploadLargeFileToTelegram(context, file, fullId, metadata,
         // 异步结束上传
         waitUntil(endUpload(context, fullId, metadata));
 
-        // 构建公开访问链接（使用 urlPrefix 配置）
-        const pageConfig = await fetchPageConfig(env);
-        const urlPrefixConfig = pageConfig.config?.find(c => c.id === 'urlPrefix');
-        const urlPrefix = urlPrefixConfig?.value || '';
         const responseBody = [{ 'src': returnLink }];
-        if (urlPrefix) {
-            responseBody[0].publicUrl = `${urlPrefix.replace(/\/+$/, '')}/${fullId}`;
-        }
+        responseBody[0].publicUrl = `${new URL(request.url).origin}/file/${fullId}`;
 
         return createResponse(
             JSON.stringify(responseBody),

@@ -1,4 +1,3 @@
-import { fetchSecurityConfig } from "../utils/sysConfig";
 import { purgeCFCache, purgeRandomFileListCache, purgePublicFileListCache } from "../utils/purgeCache";
 import { addFileToIndex } from "../utils/indexManager.js";
 import { getDatabase } from '../utils/databaseAdapter.js';
@@ -29,84 +28,6 @@ export function generateShortId(length = 8) {
         result += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return result;
-}
-
-const UNKNOWN_IP_ADDRESS = '未知';
-
-// 获取IP地址
-export async function getIPAddress(env, ip, securityConfig = null) {
-    if (!env || !ip) return UNKNOWN_IP_ADDRESS;
-
-    try {
-        const config = securityConfig || await fetchSecurityConfig(env);
-        const ipQuery = config?.upload?.ipQuery;
-
-        if (!ipQuery?.enabled || ipQuery.channel !== 'customApi') {
-            return UNKNOWN_IP_ADDRESS;
-        }
-
-        const customApi = ipQuery.customApi || {};
-        if (!customApi.url) {
-            return UNKNOWN_IP_ADDRESS;
-        }
-
-        const responseFields = Array.isArray(customApi.responseFields)
-            ? customApi.responseFields
-                .map(field => typeof field === 'string' ? field : field?.path || '')
-                .filter(Boolean)
-            : [];
-        if (responseFields.length === 0) {
-            return UNKNOWN_IP_ADDRESS;
-        }
-
-        const replaceIpPlaceholder = value => String(value ?? '').replace(/\{ip\}/g, ip);
-        const queryUrl = new URL(replaceIpPlaceholder(customApi.url));
-        const paramList = Array.isArray(customApi.params) ? customApi.params : [];
-        for (const param of paramList) {
-            const key = replaceIpPlaceholder(param?.key || '');
-            if (!key) continue;
-            queryUrl.searchParams.append(key, replaceIpPlaceholder(param?.value || ''));
-        }
-
-        const response = await fetch(queryUrl.toString());
-        if (!response.ok) {
-            return UNKNOWN_IP_ADDRESS;
-        }
-
-        const data = JSON.parse((await response.text()).trim());
-        const formatValue = value => {
-            if (Array.isArray(value)) {
-                return value.map(formatValue).filter(Boolean).join(', ');
-            }
-            if (typeof value === 'object' && value !== null) {
-                return JSON.stringify(value);
-            }
-            return String(value ?? '').trim();
-        };
-
-        const address = responseFields
-            .map(path => {
-                const value = String(path)
-                    .replace(/\[(\d+)\]/g, '.$1')
-                    .split('.')
-                    .map(segment => segment.trim())
-                    .filter(Boolean)
-                    .reduce((current, segment) => {
-                        if (current === undefined || current === null) return undefined;
-                        return current[segment];
-                    }, data);
-
-                if (value === undefined || value === null || value === '') return '';
-                return formatValue(value);
-            })
-            .filter(Boolean)
-            .join('，');
-
-        return address || UNKNOWN_IP_ADDRESS;
-    } catch (error) {
-        console.error('Error fetching IP address:', error);
-        return UNKNOWN_IP_ADDRESS;
-    }
 }
 
 // 处理文件名中的特殊字符
@@ -293,83 +214,9 @@ export function getImageDimensions(buffer, fileType) {
     }
 }
 
-// 图像审查
-export async function moderateContent(env, url) {
-    const securityConfig = await fetchSecurityConfig(env);
-    const uploadModerate = securityConfig.upload.moderate;
-
-    const enableModerate = uploadModerate && uploadModerate.enabled;
-
-    let label = "None";
-
-    // 如果未启用审查，直接返回label
-    if (!enableModerate) {
-        return label;
-    }
-
-    // moderatecontent.com 渠道
-    if (uploadModerate.channel === 'moderatecontent.com') {
-        const apikey = uploadModerate.moderateContentApiKey;
-        if (apikey == undefined || apikey == null || apikey == "") {
-            label = "None";
-        } else {
-            try {
-                const params = new URLSearchParams({ key: apikey, url: url });
-                const fetchResponse = await fetch('https://api.moderatecontent.com/moderate/', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: params.toString()
-                });
-                if (!fetchResponse.ok) {
-                    throw new Error(`HTTP error! status: ${fetchResponse.status}`);
-                }
-                const moderate_data = await fetchResponse.json();
-                if (moderate_data.rating_label) {
-                    label = moderate_data.rating_label;
-                }
-            } catch (error) {
-                console.error('Moderate Error:', error);
-                // 将不带审查的图片写入数据库
-                label = "None";
-            }
-        }
-        return label;
-    }
-
-    // nsfw 渠道
-    if (uploadModerate.channel === 'nsfwjs') {
-        const nsfwApiPath = securityConfig.upload.moderate.nsfwApiPath;
-
-        try {
-            const fetchResponse = await fetch(`${nsfwApiPath}?url=${encodeURIComponent(url)}`);
-            if (!fetchResponse.ok) {
-                throw new Error(`HTTP error! status: ${fetchResponse.status}`);
-            }
-            const moderate_data = await fetchResponse.json();
-
-            const score = moderate_data.score || 0;
-            if (score >= 0.9) {
-                label = "adult";
-            } else if (score >= 0.7) {
-                label = "teen";
-            } else {
-                label = "everyone";
-            }
-        } catch (error) {
-            console.error('Moderate Error:', error);
-            // 将不带审查的图片写入数据库
-            label = "None";
-        }
-
-        return label;
-    }
-
-    return label;
-}
-
 // 清除CDN缓存
 export async function purgeCDNCache(env, cdnUrl, url, normalizedFolder) {
-    if (env.dev_mode === 'true') {
+    if (env.DEV_MODE === 'true') {
         return;
     }
 
@@ -391,7 +238,7 @@ export async function endUpload(context, fileId, metadata) {
 
     // 清除CDN缓存
     const cdnUrl = `https://${url.hostname}/file/${fileId}`;
-    const normalizedFolder = sanitizeUploadFolder(url.searchParams.get('uploadFolder') || '');
+    const normalizedFolder = '';
     await purgeCDNCache(env, cdnUrl, url, normalizedFolder);
 
     // 更新文件索引（索引更新时会自动计算容量统计）
@@ -434,69 +281,24 @@ export async function isBlockedUploadIp(env, uploadIp) {
 
 // 构建唯一文件ID
 export async function buildUniqueFileId(context, fileName, fileType = 'application/octet-stream') {
-    const { env, url } = context;
+    const { env } = context;
     const db = getDatabase(env);
-
-    const fileExt = resolveFileExt(fileName, fileType);
-
-    const nameType = url.searchParams.get('uploadNameType') || 'default';
-    const uploadFolder = url.searchParams.get('uploadFolder') || '';
-    // 对上传路径进行安全处理
-    const normalizedFolder = sanitizeUploadFolder(uploadFolder);
 
     // 处理文件名，移除特殊字符
     fileName = sanitizeFileName(fileName);
-
-    const unique_index = Date.now() + Math.floor(Math.random() * 10000);
-    let baseId = '';
-
-    // 根据命名方式构建基础ID
-    if (nameType === 'index') {
-        baseId = normalizedFolder ? `${normalizedFolder}/${unique_index}.${fileExt}` : `${unique_index}.${fileExt}`;
-    } else if (nameType === 'origin') {
-        baseId = normalizedFolder ? `${normalizedFolder}/${fileName}` : fileName;
-    } else if (nameType === 'short') {
-        // 对于短链接，直接在循环中生成不重复的ID
-        while (true) {
-            const shortId = generateShortId(8);
-            const testFullId = normalizedFolder ? `${normalizedFolder}/${shortId}.${fileExt}` : `${shortId}.${fileExt}`;
-            if (await db.get(testFullId) === null) {
-                return testFullId;
-            }
-        }
-    } else {
-        baseId = normalizedFolder ? `${normalizedFolder}/${unique_index}_${fileName}` : `${unique_index}_${fileName}`;
-    }
+    const extensionIndex = fileName.lastIndexOf('.');
+    const nameWithoutExt = extensionIndex > 0 ? fileName.slice(0, extensionIndex) : fileName;
+    const ext = extensionIndex > 0 ? fileName.slice(extensionIndex) : '';
 
     // 检查基础ID是否已存在
-    if (await db.get(baseId) === null) {
-        return baseId;
+    if (await db.get(fileName) === null) {
+        return fileName;
     }
 
-    // 如果已存在，在文件名后面加上递增编号
+    // 同名时在扩展名前添加递增下划线编号。
     let counter = 1;
     while (true) {
-        let duplicateId;
-
-        if (nameType === 'index') {
-            const baseName = unique_index;
-            duplicateId = normalizedFolder ?
-                `${normalizedFolder}/${baseName}(${counter}).${fileExt}` :
-                `${baseName}(${counter}).${fileExt}`;
-        } else if (nameType === 'origin') {
-            const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.'));
-            const ext = fileName.substring(fileName.lastIndexOf('.'));
-            duplicateId = normalizedFolder ?
-                `${normalizedFolder}/${nameWithoutExt}(${counter})${ext}` :
-                `${nameWithoutExt}(${counter})${ext}`;
-        } else {
-            const baseName = `${unique_index}_${fileName}`;
-            const nameWithoutExt = baseName.substring(0, baseName.lastIndexOf('.'));
-            const ext = baseName.substring(baseName.lastIndexOf('.'));
-            duplicateId = normalizedFolder ?
-                `${normalizedFolder}/${nameWithoutExt}(${counter})${ext}` :
-                `${nameWithoutExt}(${counter})${ext}`;
-        }
+        const duplicateId = `${nameWithoutExt}_${counter}${ext}`;
 
         // 检查新ID是否已存在
         if (await db.get(duplicateId) === null) {

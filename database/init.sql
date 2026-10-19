@@ -1,4 +1,4 @@
--- CloudFlare ImgBed D1 Database Initialization Script
+-- cf-imghub D1 Database Initialization Script
 -- 这个脚本用于初始化D1数据库
 
 -- 删除已存在的表（如果需要重新初始化）
@@ -112,4 +112,3 @@ CREATE TRIGGER IF NOT EXISTS update_other_data_updated_at
     BEGIN
         UPDATE other_data SET updated_at = CURRENT_TIMESTAMP WHERE key = NEW.key;
     END;
-

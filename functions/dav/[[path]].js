@@ -1,7 +1,7 @@
 // WebDAV 服务支持
 import { fetchOthersConfig } from "../utils/sysConfig";
 import { getDatabase } from "../utils/databaseAdapter";
-import { createApiToken } from "../api/manage/apiTokens";
+import { createApiToken } from "../utils/auth/apiTokenStore.js";
 
 export async function onRequest(context) {
     const { request, env } = context;

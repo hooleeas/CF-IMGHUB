@@ -612,11 +612,11 @@ async function handleR2File(context, fileId, encodedFileName, fileType) {
 
     try {
         // 检查是否配置了R2
-        if (typeof env.img_r2 == "undefined" || env.img_r2 == null || env.img_r2 == "") {
+        if (typeof env.R2 == "undefined" || env.R2 == null || env.R2 == "") {
             return new Response('Error: Please configure R2 database', { status: 500 });
         }
 
-        const R2DataBase = env.img_r2;
+        const R2DataBase = env.R2;
 
         // 检查Range请求头
         const range = request.headers.get('Range');
