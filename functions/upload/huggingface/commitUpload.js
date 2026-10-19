@@ -5,9 +5,9 @@
  */
 
 import { HuggingFaceAPI } from '../../utils/storage/huggingfaceAPI.js';
-import { fetchPageConfig, fetchUploadConfig } from '../../utils/sysConfig.js';
+import { fetchUploadConfig } from '../../utils/sysConfig.js';
 import { getDatabase } from '../../utils/databaseAdapter.js';
-import { moderateContent, endUpload, getUploadIp, getIPAddress, sanitizeUploadFolder, createResponse } from '../uploadTools.js';
+import { endUpload, getUploadIp, sanitizeUploadFolder, createResponse } from '../uploadTools.js';
 import { userAuthCheck, UnauthorizedResponse } from '../../utils/auth/userAuth.js';
 
 export async function onRequestPost(context) {
@@ -90,9 +90,8 @@ export async function onRequestPost(context) {
         const dirParts = fullId.split('/').slice(0, -1).join('/');
         const normalizedDirectory = dirParts === '' ? '' : dirParts + '/';
 
-        // 获取上传IP和地址
+        // 获取上传IP
         const uploadIp = getUploadIp(request) || '';
-        const uploadAddress = await getIPAddress(env, uploadIp);
 
         // 构建 metadata
         const metadata = {
@@ -103,23 +102,10 @@ export async function onRequestPost(context) {
             FileSize: (fileSize / 1024 / 1024).toFixed(2),
             FileSizeBytes: fileSize,
             UploadIP: uploadIp,
-            UploadAddress: uploadAddress,
-            ListType: "None",
             HfFilePath: filePath,
             TimeStamp: Date.now(),
-            Label: "None",
-            Directory: normalizedDirectory,
-            Tags: []
+            ...(normalizedDirectory ? { Directory: normalizedDirectory } : {}),
         };
-
-        // 图像审查（公开仓库）
-        if (!hfChannel.isPrivate) {
-            try {
-                metadata.Label = await moderateContent(env, fileUrl);
-            } catch (e) {
-                console.warn('Content moderation failed:', e.message);
-            }
-        }
 
         // 写入数据库
         const db = getDatabase(env);
@@ -143,13 +129,8 @@ export async function onRequestPost(context) {
             fullId
         };
 
-        // 构建公开访问链接（使用 urlPrefix 配置）
-        const pageConfig = await fetchPageConfig(env);
-        const urlPrefixConfig = pageConfig.config?.find(c => c.id === 'urlPrefix');
-        const urlPrefix = urlPrefixConfig?.value || '';
-        if (urlPrefix) {
-            responseBody.publicUrl = `${urlPrefix.replace(/\/+$/, '')}/${fullId}`;
-        }
+        // 域名使用当前请求来源，文件路由后缀固定为 /file/。
+        responseBody.publicUrl = `${new URL(request.url).origin}/file/${fullId}`;
 
         return createResponse(JSON.stringify(responseBody), {
             status: 200,

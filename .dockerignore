@@ -5,12 +5,7 @@ Dockerfile
 .git
 .gitignore
 .github
-.agents
-.claude
-.wrangler
 data
 readme
 deploy/worker
-docker-compose.yml
-wrangler.toml
 *.md

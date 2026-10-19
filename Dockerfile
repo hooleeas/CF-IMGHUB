@@ -1,32 +1,16 @@
-FROM node:22-slim AS dependencies
-
-WORKDIR /app
-
-COPY package.json package-lock.json ./
-COPY deploy/profiles ./deploy/profiles
+FROM node:22-slim
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends python3 make g++ && \
-    npm ci --workspace=@cloudflare-imgbed/common --workspace=@cloudflare-imgbed/server --omit=dev && \
-    rm -rf /root/.npm /var/lib/apt/lists/* /tmp/*
-
-FROM node:22-slim AS runtime
-
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates curl && \
+    apt-get install -y --no-install-recommends ca-certificates curl python3 make g++ && \
     update-ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-ENV NODE_ENV=production
+COPY . .
 
-COPY --from=dependencies /app/node_modules ./node_modules
-COPY package.json ./
-COPY deploy/profiles ./deploy/profiles
-COPY frontend-dist ./frontend-dist
-COPY functions ./functions
-COPY database ./database
-COPY deploy/server ./deploy/server
+RUN npm install --omit=dev && \
+    apt-get purge -y --auto-remove python3 make g++ && \
+    rm -rf /root/.npm /tmp/*
 
 EXPOSE 8080
 CMD ["node", "--import", "./deploy/server/register.mjs", "deploy/server/index.js"]

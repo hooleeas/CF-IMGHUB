@@ -4,6 +4,11 @@
  */
 
 import { D1Database } from './d1Database.js';
+import {
+    decodeSystemConfigValue,
+    encodeSystemConfigValue,
+    getSystemConfigStorageKeys,
+} from './sysConfigStorage.js';
 
 /**
  * 创建数据库适配器
@@ -12,14 +17,14 @@ import { D1Database } from './d1Database.js';
  */
 export function createDatabaseAdapter(env) {
     // 检查是否配置了数据库
-    if (env.img_url && typeof env.img_url.get === 'function') {
+    if (env.KV && typeof env.KV.get === 'function') {
         // 使用KV存储
-        return new KVAdapter(env.img_url);
-    } else if (env.img_d1 && typeof env.img_d1.prepare === 'function') {
+        return new KVAdapter(env.KV);
+    } else if (env.D1 && typeof env.D1.prepare === 'function') {
         // 使用D1数据库
-        return new D1Database(env.img_d1);
+        return new D1Database(env.D1);
     } else {
-        console.error('No database configured. Please configure either KV (env.img_url) or D1 (env.img_d1).');
+        console.error('No database configured. Please configure either KV (env.KV) or D1 (env.D1).');
         return null;
     }
 }
@@ -36,21 +41,56 @@ class KVAdapter {
     // 直接代理到KV的方法
     async put(key, value, options) {
         options = options || {};
+        const configKeys = getSystemConfigStorageKeys(key);
+        if (configKeys) {
+            return await this.kv.put(
+                configKeys.storageKey,
+                encodeSystemConfigValue(value),
+                options
+            );
+        }
         return await this.kv.put(key, value, options);
     }
 
     async get(key, options) {
         options = options || {};
+        const configKeys = getSystemConfigStorageKeys(key);
+        if (configKeys) {
+            let value = await this.kv.get(configKeys.storageKey, options);
+            if (value === null) {
+                value = await this.kv.get(configKeys.legacyKey, options);
+                if (value !== null) {
+                    const migratedValue = encodeSystemConfigValue(value);
+                    await this.kv.put(
+                        configKeys.storageKey,
+                        migratedValue,
+                        options
+                    );
+                    await this.kv.delete(configKeys.legacyKey);
+                    value = migratedValue;
+                }
+            }
+            return value === null ? null : decodeSystemConfigValue(value);
+        }
         return await this.kv.get(key, options);
     }
 
     async getWithMetadata(key, options) {
         options = options || {};
+        if (getSystemConfigStorageKeys(key)) {
+            const value = await this.get(key, options);
+            return value === null ? null : { value, metadata: {} };
+        }
         return await this.kv.getWithMetadata(key, options);
     }
 
     async delete(key, options) {
         options = options || {};
+        const configKeys = getSystemConfigStorageKeys(key);
+        if (configKeys) {
+            await this.kv.delete(configKeys.storageKey, options);
+            return await this.kv.delete(configKeys.legacyKey, options);
+        }
         return await this.kv.delete(key, options);
     }
 
@@ -148,7 +188,7 @@ class KVAdapter {
 export function getDatabase(env) {
     var adapter = createDatabaseAdapter(env);
     if (!adapter) {
-        throw new Error('Database not configured. Please configure D1 database (env.img_d1) or KV storage (env.img_url).');
+        throw new Error('Database not configured. Please configure D1 database (env.D1) or KV storage (env.KV).');
     }
     return adapter;
 }
@@ -159,8 +199,8 @@ export function getDatabase(env) {
  * @returns {Object} 配置信息
  */
 export function checkDatabaseConfig(env) {
-    var hasD1 = env.img_d1 && typeof env.img_d1.prepare === 'function';
-    var hasKV = env.img_url && typeof env.img_url.get === 'function';
+    var hasD1 = env.D1 && typeof env.D1.prepare === 'function';
+    var hasKV = env.KV && typeof env.KV.get === 'function';
 
     return {
         hasD1: hasD1,

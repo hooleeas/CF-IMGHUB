@@ -1,5 +1,4 @@
-import { createS3Client } from '../../../utils/storage/s3Client.js';
-import { CopyObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, CopyObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { purgeCFCache, purgeRandomFileListCache, purgePublicFileListCache } from "../../../utils/purgeCache";
 import { moveFileInIndex } from "../../../utils/indexManager.js";
 import { getDatabase } from '../../../utils/databaseAdapter.js';
@@ -117,7 +116,7 @@ export async function onRequest(context) {
 
         // 如果是 R2 渠道的图片，需要移动 R2 中对应的图片
         if (metadata?.Channel === 'CloudflareR2') {
-            const R2DataBase = env.img_r2;
+            const R2DataBase = env.R2;
 
             // 获取原文件内容
             const object = await R2DataBase.get(fileId);
@@ -208,7 +207,15 @@ export async function onRequest(context) {
 async function moveS3File(env, img, newFileId) {
     const db = getDatabase(env);
     const s3Credentials = await resolveS3Credentials(db, env, img.metadata);
-    const s3Client = createS3Client(s3Credentials);
+    const s3Client = new S3Client({
+        region: s3Credentials.region || "auto",
+        endpoint: s3Credentials.endpoint,
+        credentials: {
+            accessKeyId: s3Credentials.accessKeyId,
+            secretAccessKey: s3Credentials.secretAccessKey
+        },
+        forcePathStyle: s3Credentials.pathStyle || false
+    });
 
     const bucketName = s3Credentials.bucketName;
     const oldKey = s3Credentials.key;

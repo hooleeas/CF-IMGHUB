@@ -6,6 +6,7 @@
  */
 
 import { getDatabase } from '../../../utils/databaseAdapter.js';
+import { SYSTEM_CONFIG_CATEGORIES } from '../../../utils/sysConfigStorage.js';
 
 // CORS 跨域响应头
 const corsHeaders = {
@@ -169,6 +170,15 @@ export async function onRequestGet(context) {
       cursor = listResult.cursor || null;
       
     } while (cursor);
+
+    // Uppercase system-config keys are outside the legacy manage@ list prefix.
+    for (const category of SYSTEM_CONFIG_CATEGORIES) {
+      const key = `manage@sysConfig@${category}`;
+      const value = await db.get(key);
+      if (value !== null && value !== undefined) {
+        settings[key.slice('manage@'.length)] = JSON.parse(value);
+      }
+    }
 
     // 4. 返回成功响应
     return jsonResponse({

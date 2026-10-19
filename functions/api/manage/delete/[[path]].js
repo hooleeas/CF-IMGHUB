@@ -1,5 +1,4 @@
-import { createS3Client } from '../../../utils/storage/s3Client.js';
-import { DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { purgeCFCache, purgeRandomFileListCache, purgePublicFileListCache } from "../../../utils/purgeCache";
 import { removeFileFromIndex, batchRemoveFilesFromIndex } from "../../../utils/indexManager.js";
 import { getDatabase } from '../../../utils/databaseAdapter.js';
@@ -131,7 +130,7 @@ export async function onRequest(context) {
 }
 
 // 删除单个文件的核心函数
-export async function deleteFile(env, fileId, cdnUrl, url) {
+async function deleteFile(env, fileId, cdnUrl, url) {
     try {
         // 读取图片信息
         const db = getDatabase(env);
@@ -145,7 +144,7 @@ export async function deleteFile(env, fileId, cdnUrl, url) {
 
         // 如果是R2渠道的图片，需要删除R2中对应的图片
         if (img.metadata?.Channel === 'CloudflareR2') {
-            const R2DataBase = env.img_r2;
+            const R2DataBase = env.R2;
             await R2DataBase.delete(fileId);
         }
 
@@ -192,7 +191,15 @@ export async function deleteFile(env, fileId, cdnUrl, url) {
 async function deleteS3File(env, img) {
     const db = getDatabase(env);
     const s3Credentials = await resolveS3Credentials(db, env, img.metadata);
-    const s3Client = createS3Client(s3Credentials);
+    const s3Client = new S3Client({
+        region: s3Credentials.region || "auto",
+        endpoint: s3Credentials.endpoint,
+        credentials: {
+            accessKeyId: s3Credentials.accessKeyId,
+            secretAccessKey: s3Credentials.secretAccessKey
+        },
+        forcePathStyle: s3Credentials.pathStyle || false // 是否启用路径风格
+    });
 
     const bucketName = s3Credentials.bucketName;
     const key = s3Credentials.key;

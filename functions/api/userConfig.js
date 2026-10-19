@@ -2,7 +2,7 @@
  * 用户端页面配置 API
  * 负责读取页面配置并转换为前端可直接使用的用户配置对象
  */
-import { fetchPageConfig } from "../utils/sysConfig.js";
+import { fetchPageConfig } from "../utils/sysConfig";
 
 export async function onRequest(context) {
     const { env } = context;
@@ -18,14 +18,10 @@ export async function onRequest(context) {
             } catch (error) {
                 userConfig[config.id] = config.value;
             }
-        } else if (config.default !== undefined) {
-            // 未配置的项目使用其声明的默认值
+        } else if (config.type === 'boolean' && config.default !== undefined) {
+            // 布尔类型使用默认值
             userConfig[config.id] = config.default;
         }
-    }
-
-    if (Number.isFinite(Number(PageConfig.announcementRefreshAt))) {
-        userConfig.announcementRefreshAt = Number(PageConfig.announcementRefreshAt);
     }
 
     // 检查 USER_CONFIG 是否为空或未定义

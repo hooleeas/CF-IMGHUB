@@ -1,5 +1,5 @@
 import { getDatabase } from '../../../utils/databaseAdapter.js';
-import { createApiToken, deleteApiToken } from '../apiTokens.js';
+import { createApiToken, deleteApiToken } from '../../../utils/auth/apiTokenStore.js';
 
 export async function onRequest(context) {
     // 其他设置相关，GET方法读取设置，POST方法保存设置
@@ -29,6 +29,11 @@ export async function onRequest(context) {
     if (request.method === 'POST') {
         const body = await request.json()
         const settings = body
+
+        // Retired settings must not be restored through stale clients.
+        delete settings.telemetry
+        delete settings.randomImageAPI
+        delete settings.publicBrowse
 
         // WebDAV internal token 管理
         const webDAV = settings.webDAV || {};
@@ -74,21 +79,6 @@ export async function getOthersConfig(db, env) {
     const settingsStr = await db.get('manage@sysConfig@others')
     const settingsKV = settingsStr ? JSON.parse(settingsStr) : {}
 
-    // 远端遥测
-    const kvTelemetry = settingsKV.telemetry || {}
-    settings.telemetry = {
-        enabled: kvTelemetry.enabled ?? !(env.disable_telemetry === 'true'),
-        fixed: false,
-    }
-
-    // 随机图API
-    const kvRandomImageAPI = settingsKV.randomImageAPI || {}
-    settings.randomImageAPI = {
-        enabled: kvRandomImageAPI.enabled ?? env.AllowRandom === 'true',
-        allowedDir: kvRandomImageAPI.allowedDir ?? '',
-        fixed: false,
-    }
-
     // CloudFlare API Token
     const kvCloudflareApiToken = settingsKV.cloudflareApiToken || {}
     settings.cloudflareApiToken = {
@@ -110,15 +100,6 @@ export async function getOthersConfig(db, env) {
         internalTokenId: kvWebDAV.internalTokenId || '',
         fixed: false,
     }
-
-    // 公开浏览
-    const kvPublicBrowse = settingsKV.publicBrowse || {}
-    settings.publicBrowse = {
-        enabled: kvPublicBrowse.enabled ?? false,
-        allowedDir: kvPublicBrowse.allowedDir || '',
-        fixed: false,
-    }
-
 
     return settings;
 }

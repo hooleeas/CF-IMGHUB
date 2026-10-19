@@ -1,4 +1,5 @@
-import { authenticate, AUTH_SCOPE } from "../../utils/auth/authCore.js";
+
+import { authenticate, AUTH_SCOPE } from '../../utils/auth/authCore.js';
 
 const DEFAULT_MANAGE_CACHE_CONTROL = 'private, no-store, max-age=0';
 
@@ -30,36 +31,6 @@ async function errorHandling(context) {
   }
 }
 
-function UnauthorizedException(reason) {
-  return new Response(reason, {
-    status: 401,
-    statusText: 'Unauthorized',
-    headers: {
-      'Content-Type': 'text/plain;charset=UTF-8',
-      'Cache-Control': 'no-store',
-      'Content-Length': reason.length,
-    },
-  });
-}
-
-/**
- * 根据请求路径提取所需权限
- * @param {string} pathname - 请求路径
- * @returns {string} 需要的权限类型
- */
-function extractRequiredPermission(pathname) {
-  const path = pathname.toLowerCase().replace(/\/$/, '');
-  if (path === '/api/manage/delete' || path.startsWith('/api/manage/delete/')) {
-    return 'delete';
-  }
-  if (path === '/api/manage/list' || path.startsWith('/api/manage/list/') || path === '/api/manage/batch/list') {
-    return 'list';
-  }
-
-  // 其他 /api/manage 下的操作需要管理权限
-  return 'manage';
-}
-
 // CORS 跨域响应头
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -77,18 +48,19 @@ async function authentication(context) {
     });
   }
 
-  const pathname = new URL(context.request.url).pathname;
-  const requiredPermission = extractRequiredPermission(pathname);
-
   const result = await authenticate({
     env: context.env,
     request: context.request,
-    requiredPermission,
     authScope: AUTH_SCOPE.ADMIN,
   });
-
   if (!result.authorized) {
-    return UnauthorizedException('You need to login');
+    return new Response('需要管理员登录。', {
+      status: 401,
+      headers: {
+        'Content-Type': 'text/plain;charset=UTF-8',
+        'Cache-Control': 'no-store',
+      },
+    });
   }
 
   return context.next();

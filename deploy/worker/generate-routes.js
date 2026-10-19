@@ -209,6 +209,7 @@ const output = `/**
 // ==================== 自动生成的导入 ====================
 
 ${imports}
+import { getSiteConfig } from '../../functions/utils/siteConfig.js';
 
 // ==================== 自动生成的路由表 ====================
 
@@ -391,10 +392,26 @@ export default {
         const url = new URL(request.url);
         const pathname = url.pathname;
 
+        if (pathname === '/admin' || pathname === '/admin/') {
+            const { adminPath } = await getSiteConfig(env);
+            if (adminPath !== '/admin') {
+                url.pathname = adminPath;
+                return Response.redirect(url, 302);
+            }
+        }
+
         const matched = matchRoute(pathname);
 
         if (!matched) {
             if (env.ASSETS) {
+                const { adminPath } = await getSiteConfig(env);
+                if (pathname === adminPath && (request.method === 'GET' || request.method === 'HEAD')) {
+                    const indexUrl = new URL('/index.html', request.url);
+                    return env.ASSETS.fetch(new Request(indexUrl, {
+                        method: request.method,
+                        headers: request.headers,
+                    }));
+                }
                 return env.ASSETS.fetch(request);
             }
             return new Response('Not Found', { status: 404 });

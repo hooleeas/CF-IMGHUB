@@ -1,6 +1,11 @@
 /**
  * D1 数据库操作工具类
  */
+import {
+    decodeSystemConfigValue,
+    encodeSystemConfigValue,
+    getSystemConfigStorageKeys,
+} from './sysConfigStorage.js';
 
 class D1Database {
     constructor(db) {
@@ -322,6 +327,13 @@ D1Database.prototype.put = function(key, value, options) {
         var operationId = key.replace('manage@index@operation_', '');
         var operation = JSON.parse(value);
         return this.putIndexOperation(operationId, operation);
+    } else if (getSystemConfigStorageKeys(key)) {
+        var configKeys = getSystemConfigStorageKeys(key);
+        return this.putSetting(
+            configKeys.storageKey,
+            encodeSystemConfigValue(value),
+            'SYSCONFIG'
+        );
     } else if (key.startsWith('manage@')) {
         // 所有 manage@ 前缀的键统一存入 settings 表
         var category = key.split('@')[1] || '';
@@ -342,6 +354,28 @@ D1Database.prototype.get = function(key) {
         return this.getIndexOperation(operationId).then(function(operation) {
             return operation ? JSON.stringify(operation) : null;
         });
+    } else if (getSystemConfigStorageKeys(key)) {
+        var configKeys = getSystemConfigStorageKeys(key);
+        return this.getSetting(configKeys.storageKey).then(function(value) {
+            if (value !== null) {
+                return decodeSystemConfigValue(value);
+            }
+
+            return self.getSetting(configKeys.legacyKey).then(function(legacyValue) {
+                if (legacyValue === null) {
+                    return null;
+                }
+
+                var migratedValue = encodeSystemConfigValue(legacyValue);
+                return self.putSetting(configKeys.storageKey, migratedValue, 'SYSCONFIG')
+                    .then(function() {
+                        return self.deleteSetting(configKeys.legacyKey);
+                    })
+                    .then(function() {
+                        return decodeSystemConfigValue(migratedValue);
+                    });
+            });
+        });
     } else if (key.startsWith('manage@')) {
         return this.getSetting(key);
     } else {
@@ -355,10 +389,8 @@ D1Database.prototype.get = function(key) {
  * 通用的getWithMetadata方法
  */
 D1Database.prototype.getWithMetadata = function(key) {
-    var self = this;
-
-    if (key.startsWith('manage@')) {
-        return this.getSetting(key).then(function(value) {
+    if (key.startsWith('manage@') || getSystemConfigStorageKeys(key)) {
+        return this.get(key).then(function(value) {
             return value ? { value: value, metadata: {} } : null;
         });
     } else {
@@ -373,6 +405,12 @@ D1Database.prototype.delete = function(key) {
     if (key.startsWith('manage@index@operation_')) {
         var operationId = key.replace('manage@index@operation_', '');
         return this.deleteIndexOperation(operationId);
+    } else if (getSystemConfigStorageKeys(key)) {
+        var configKeys = getSystemConfigStorageKeys(key);
+        return Promise.all([
+            this.deleteSetting(configKeys.storageKey),
+            this.deleteSetting(configKeys.legacyKey),
+        ]);
     } else if (key.startsWith('manage@')) {
         return this.deleteSetting(key);
     } else {

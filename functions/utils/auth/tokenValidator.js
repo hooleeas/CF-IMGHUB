@@ -1,6 +1,7 @@
 // API Token权限验证工具函数
-import { getTokenData } from '../../api/manage/apiTokens.js';
+import { getTokenData } from './apiTokenStore.js';
 import { isExpired } from './tokenExpiration.js';
+import { getDatabase } from '../databaseAdapter.js';
 
 /**
  * 验证API Token权限
@@ -34,6 +35,12 @@ export async function validateApiToken(request, db, requiredPermission) {
     
     if (!tokenData) {
         return { valid: false, error: '无效的Token' };
+    }
+
+    // Only WebDAV's private internal credential remains supported; public
+    // user-managed API tokens were retired with the security settings panel.
+    if (tokenData.type !== 'internal') {
+        return { valid: false, error: 'API Token 功能已停用' };
     }
 
     // 检查Token是否已过期
@@ -74,8 +81,8 @@ export async function getTokenInfo(request, kv) {
         return null;
     }
 
-    // 从KV中获取Token信息
-    const settingsStr = await kv.get('manage@sysConfig@security');
+    // 从数据库适配器读取，以兼容大小写迁移后的系统配置。
+    const settingsStr = await getDatabase({ KV: kv }).get('manage@sysConfig@security');
     const settings = settingsStr ? JSON.parse(settingsStr) : {};
     const tokens = settings.apiTokens?.tokens || {};
     

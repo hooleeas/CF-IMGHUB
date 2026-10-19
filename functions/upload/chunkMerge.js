@@ -1,10 +1,8 @@
-import { createS3Client } from '../utils/storage/s3Client.js';
 /* ========== 分块合并处理 ========== */
-import { createResponse, getUploadIp, getIPAddress, selectConsistentChannel, buildUniqueFileId, endUpload, sanitizeUploadFolder } from './uploadTools';
+import { createResponse, getUploadIp, selectConsistentChannel, buildUniqueFileId, endUpload } from './uploadTools';
 import { retryFailedChunks, cleanupFailedMultipartUploads, checkChunkUploadStatuses, cleanupChunkData, cleanupUploadSession } from './chunkUpload';
-import { CompleteMultipartUploadCommand } from "@aws-sdk/client-s3";
+import { S3Client, CompleteMultipartUploadCommand } from "@aws-sdk/client-s3";
 import { getDatabase } from '../utils/databaseAdapter.js';
-import { fetchPageConfig } from '../utils/sysConfig.js';
 
 // 处理分块合并
 export async function handleChunkMerge(context) {
@@ -114,16 +112,11 @@ async function startMerge(context, uploadId, totalChunks, originalFileName, orig
             // 清理上传会话
             await cleanupUploadSession(env, uploadId);
 
-            // 构建公开访问链接（使用 urlPrefix 配置）
+            // 公开 URL 使用当前请求域名和固定的 /file/ 路径后缀。
             if (result.result && result.result.length > 0) {
                 const src = result.result[0].src;
                 const fileName = src.startsWith('/file/') ? src.slice(6) : src.split('/file/').pop();
-                const pageConfig = await fetchPageConfig(env);
-                const urlPrefixConfig = pageConfig.config?.find(c => c.id === 'urlPrefix');
-                const urlPrefix = urlPrefixConfig?.value || '';
-                if (urlPrefix) {
-                    result.result[0].publicUrl = `${urlPrefix.replace(/\/+$/, '')}/${fileName}`;
-                }
+                result.result[0].publicUrl = `${new URL(request.url).origin}/file/${fileName}`;
             }
 
             return createResponse(JSON.stringify(result.result), {
@@ -158,20 +151,13 @@ async function handleChannelBasedMerge(context, uploadId, totalChunks, originalF
         // 获得上传IP
         const uploadIp = getUploadIp(request);
 
-        const normalizedFolder = sanitizeUploadFolder(url.searchParams.get('uploadFolder') || '');
-
         // 构建基础metadata
         const metadata = {
             FileName: originalFileName,
             FileType: originalFileType,
             FileSize: '0', // 会在最终合并后更新
             UploadIP: uploadIp,
-            UploadAddress: await getIPAddress(env, uploadIp, context.securityConfig),
-            ListType: "None",
             TimeStamp: Date.now(),
-            Label: "None",
-            Directory: normalizedFolder === '' ? '' : normalizedFolder + '/',
-            Tags: []
         };
 
         // 收集所有已上传的分块信息
@@ -247,7 +233,7 @@ async function mergeR2ChunksInfo(context, uploadId, completedChunks, metadata) {
     const db = getDatabase(env);
 
     try {
-        const R2DataBase = env.img_r2;
+        const R2DataBase = env.R2;
         const multipartKey = `multipart_${uploadId}`;
 
         // 获取multipart info
@@ -343,9 +329,14 @@ async function mergeS3ChunksInfo(context, uploadId, completedChunks, metadata) {
 
         console.log(`Merging S3 chunks for uploadId: ${uploadId}, selected channel: ${s3Channel.name || 'default'}`);
 
-        const { bucketName } = s3Channel;
+        const { endpoint, pathStyle, accessKeyId, secretAccessKey, bucketName, region } = s3Channel;
 
-        const s3Client = createS3Client(s3Channel);
+        const s3Client = new S3Client({
+            region: region || "auto",
+            endpoint,
+            credentials: { accessKeyId, secretAccessKey },
+            forcePathStyle: pathStyle
+        });
 
         const multipartKey = `multipart_${uploadId}`;
 
