@@ -15,13 +15,13 @@ For detailed feature and deployment guides, see the [project documentation](http
 
 ## Docker
 
-The Compose file in this repository runs the application on port `7658` and persists its data in `./data`:
+The Compose file in this repository runs the application on port `7654` and persists its data in `./data`:
 
 ```bash
 docker compose up -d
 ```
 
-Open [http://localhost:7658](http://localhost:7658) after the container starts.
+Open [http://localhost:7654](http://localhost:7654) after the container starts.
 
 The Compose file uses `ghcr.io/hooleeas/cf-imghub:latest`. GitHub Actions publishes a development image from pushes to `main`. To publish a versioned release, push a semantic version tag such as `v2.7.5`; the workflow publishes `2.7.5`, `2.7`, `2`, and `latest` tags for that release. If the package is private, make it public in GitHub Packages before pulling it anonymously.
 

@@ -15,13 +15,13 @@
 
 ## Docker 部署
 
-本仓库的 Compose 配置使用 `7658` 端口，并将数据持久化到 `./data`：
+本仓库的 Compose 配置使用 `7654` 端口，并将数据持久化到 `./data`：
 
 ```bash
 docker compose up -d
 ```
 
-容器启动后访问 [http://localhost:7658](http://localhost:7658)。
+容器启动后访问 [http://localhost:7654](http://localhost:7654)。
 
 Compose 配置使用镜像 `ghcr.io/hooleeas/cf-imghub:latest`。推送到 `main` 分支时，GitHub Actions 会构建并发布开发镜像。发布正式版本时，推送语义化版本标签（例如 `v2.7.5`），工作流会为该版本发布 `2.7.5`、`2.7`、`2` 和 `latest` 标签。如果软件包是私有的，请先在 GitHub Packages 中将其设为公开，方便匿名拉取。
 
