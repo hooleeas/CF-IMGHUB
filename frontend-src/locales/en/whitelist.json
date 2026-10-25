@@ -1,0 +1,9 @@
+{
+  "title": "Whitelist Mode Enabled",
+  "description": "Sorry, the whitelist mode is currently enabled. Uploaded images need to be approved before they can be displayed. Please wait for approval.",
+  "goHome": "Go Home",
+  "goBack": "Go Back",
+  "helpText": "You can try:",
+  "uploadImage": "Upload Image",
+  "refreshPage": "Refresh Page"
+}

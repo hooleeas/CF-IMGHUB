@@ -22,7 +22,6 @@ export default createStore({
     storeChannelName: null, // 指定的渠道名称，null表示从未选择，''表示用户主动清空
     storeAutoRetry: true,
     storeUploadNameType: '',
-    uploadFolder: '',
     customUrlSettings: {
       useCustomUrl: 'false',
       customUrlPrefix: '',
@@ -49,9 +48,6 @@ export default createStore({
     customUrlSettings: state => state.customUrlSettings,
     storeAutoRetry: state => state.storeAutoRetry,
     adminUrlSettings: state => state.adminUrlSettings,
-    storeUploadFolder: (state) => {
-      return state.uploadFolder || localStorage.getItem('uploadFolder') || ''
-    },
     storeAutoReUpload: state => state.autoReUpload,
   },
   mutations: {
@@ -97,10 +93,6 @@ export default createStore({
     },
     setAdminUrlSettings(state, { key, value }) {
       state.adminUrlSettings[key] = value;
-    },
-    setStoreUploadFolder(state, folder) {
-      state.uploadFolder = folder
-      localStorage.setItem('uploadFolder', folder)
     },
     setStoreAutoReUpload(state, autoReUpload) {
       state.autoReUpload = autoReUpload;
@@ -154,7 +146,6 @@ export default createStore({
       'storeChannelName',
       'storeAutoRetry',
       'storeUploadNameType',
-      'uploadFolder',
       'customUrlSettings',
       'adminUrlSettings',
       'autoReUpload',

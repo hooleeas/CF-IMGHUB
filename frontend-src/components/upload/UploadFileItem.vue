@@ -1,11 +1,12 @@
-import { Link, Delete } from '@element-plus/icons-vue';
+import { Link, Delete, MoreFilled } from '@element-plus/icons-vue';
 const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'tiff', 'ico', 'avif', 'heic', 'jfif', 'pjpeg', 'pjp', 'raw', 'cr2', 'nef', 'dng', 'eps', 'ai', 'emf', 'wmf'];
 const VIDEO_EXTENSIONS = ['mp4', 'webm', 'ogg', 'mkv'];
 export default {
   name: 'UploadFileItem',
   components: {
     Link,
-    Delete
+    Delete,
+    MoreFilled
   },
   props: {
     file: {
@@ -44,18 +45,11 @@ export default {
       if (keepStart <= 0) return filename.substring(0, maxLength - 3) + '...';
       return name.substring(0, keepStart) + '...' + name.slice(-4) + ext;
     },
-    selectAllText(event) {
-      navigator.clipboard.writeText(event.target.value).then(() => {
-        this.$message({
-          type: 'success',
-          message: this.$t('uploadForm.copySuccess')
-        });
-      }).catch(() => {
-        this.$message({
-          type: 'error',
-          message: this.$t('uploadForm.copyFailed')
-        });
-      });
+    copyFormat(format) {
+      this.$emit('copy', this.file, format);
+    },
+    removeFile() {
+      this.$emit('remove', this.file);
     }
   }
 };

@@ -17,6 +17,7 @@ import IndexRebuilder from '@/utils/indexRebuilder';
 import BackupGenerator from '@/utils/backupGenerator';
 import RestoreProcessor from '@/utils/restoreProcessor';
 import DateRangeCalendar from '@/components/DateRangeCalendar.vue';
+import notifyToast from '@/utils/notifyToast';
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Filler);
 const DAY_MS = 24 * 60 * 60 * 1000;
 function padDatePart(value) {
@@ -444,7 +445,7 @@ export default {
         }
       } catch (error) {
         console.error('获取索引信息失败:', error);
-        this.$message.error(this.$t('sysStatus.fetchIndexFailed'));
+        notifyToast(this.$t('sysStatus.fetchIndexFailed'), 'error');
       } finally {
         this.loading = false;
       }
@@ -452,7 +453,7 @@ export default {
     // 重建索引 - 使用前端辅助重建流程
     async rebuildIndex() {
       if (this.isProcessing) {
-        this.$message.warning(this.$t('sysStatus.operationInProgress'));
+        notifyToast(this.$t('sysStatus.operationInProgress'), 'error');
         return;
       }
       this.rebuilding = true;
@@ -475,7 +476,7 @@ export default {
         const result = await this.currentRebuilder.rebuild();
 
         // 成功完成
-        this.$message.success(this.$t('sysStatus.rebuildSuccess', {
+        notifyToast(this.$t('sysStatus.rebuildSuccess', {
           count: result.totalFiles.toLocaleString()
         }));
 
@@ -487,7 +488,7 @@ export default {
         // 错误处理
         if (error.code !== 'ABORTED') {
           const errorMessage = error.suggestion ? `${error.message}。${error.suggestion}` : error.message;
-          this.$message.error(errorMessage);
+          notifyToast(errorMessage, 'error');
           this.processingError = {
             message: error.message,
             suggestion: error.suggestion,
@@ -504,7 +505,7 @@ export default {
     // 备份数据 - 使用前端辅助备份流程
     async backupData() {
       if (this.isProcessing) {
-        this.$message.warning(this.$t('sysStatus.operationInProgress'));
+        notifyToast(this.$t('sysStatus.operationInProgress'), 'error');
         return;
       }
       this.backing = true;
@@ -532,12 +533,12 @@ export default {
         }) : this.$t('sysStatus.backupSuccess', {
           count: result.fileCount.toLocaleString()
         });
-        this.$message.success(settingsMsg);
+        notifyToast(settingsMsg);
       } catch (error) {
         // 错误处理
         if (error.code !== 'ABORTED') {
           const errorMessage = error.suggestion ? `${error.message}。${error.suggestion}` : error.message;
-          this.$message.error(errorMessage);
+          notifyToast(errorMessage, 'error');
           this.processingError = {
             message: error.message,
             suggestion: error.suggestion,
@@ -561,7 +562,7 @@ export default {
       const file = event.target.files[0];
       if (!file) return;
       if (!file.name.endsWith('.json')) {
-        this.$message.error(this.$t('sysStatus.selectJsonFile'));
+        notifyToast(this.$t('sysStatus.selectJsonFile'), 'error');
         return;
       }
 
@@ -585,7 +586,7 @@ export default {
     // 恢复数据 - 使用前端辅助分批恢复流程
     async restoreData(file) {
       if (this.isProcessing) {
-        this.$message.warning(this.$t('sysStatus.operationInProgress'));
+        notifyToast(this.$t('sysStatus.operationInProgress'), 'error');
         return;
       }
       this.restoring = true;
@@ -624,7 +625,7 @@ export default {
         this.processingStartTime = null;
 
         // 显示恢复成功消息
-        this.$message.success(this.$t('sysStatus.restoreSuccess', {
+        notifyToast(this.$t('sysStatus.restoreSuccess', {
           files: result.restoredFiles,
           settings: result.restoredSettings
         }));
@@ -642,7 +643,7 @@ export default {
         this.processingStartTime = null;
         if (error.code !== 'ABORTED') {
           const errorMessage = error.suggestion ? `${error.message}。${error.suggestion}` : error.message;
-          this.$message.error(this.$t('sysStatus.restoreFailed') + ': ' + errorMessage);
+          notifyToast(this.$t('sysStatus.restoreFailed') + ': ' + errorMessage, 'error');
           this.processingError = {
             message: error.message,
             suggestion: error.suggestion,
@@ -793,15 +794,15 @@ export default {
     cancelOperation() {
       if (this.currentRebuilder) {
         this.currentRebuilder.abort();
-        this.$message.info(this.$t('sysStatus.cancellingRebuild'));
+        notifyToast(this.$t('sysStatus.cancellingRebuild'));
       }
       if (this.currentBackupGenerator) {
         this.currentBackupGenerator.abort();
-        this.$message.info(this.$t('sysStatus.cancellingRebuild'));
+        notifyToast(this.$t('sysStatus.cancellingRebuild'));
       }
       if (this.currentRestoreProcessor) {
         this.currentRestoreProcessor.abort();
-        this.$message.info(this.$t('sysStatus.cancellingRebuild'));
+        notifyToast(this.$t('sysStatus.cancellingRebuild'));
       }
     },
     // 重试操作

@@ -1,75 +1,17 @@
-/* 索引管理器 */
+/* 图片索引直接由图片 KV 记录生成，不重复持久化索引。 */
 
-/**
- * 文件索引结构（分块存储）：
- * 
- * 索引元数据：
- * - key: manage@index@meta
- * - value: JSON.stringify(metadata)
- * - metadata: {
- *     lastUpdated: 1640995200000,
- *     totalCount: 1000,
- *     lastOperationId: "operation_timestamp_uuid",
- *     chunkCount: 3
- *   }
- * 
- * 索引分块：
- * - key: manage@index_${chunkId} (例如: manage@index_0, manage@index_1, ...)
- * - value: JSON.stringify(filesChunk)
- * - filesChunk: [
- *     {
- *       id: "file_unique_id",
- *       metadata: {}
- *     },
- *     ...
- *   ]
- * 
- * 原子操作结构（保持不变）：
- * - key: manage@index@operation_${timestamp}_${uuid}
- * - value: JSON.stringify(operation)
- * - operation: {
- *     type: "add" | "remove" | "move" | "batch_add" | "batch_remove" | "batch_move",
- *     timestamp: 1640995200000,
- *     data: {
- *       // 根据操作类型包含不同的数据
- *     }
- *   }
- */
-
-import { getDatabase, checkDatabaseConfig } from './databaseAdapter.js';
+import { getDatabase } from './databaseAdapter.js';
 
 const INDEX_KEY = 'manage@index';
-const INDEX_META_KEY = 'manage@index@meta'; // 索引元数据键
 const OPERATION_KEY_PREFIX = 'manage@index@operation_';
-// D1 单字段限制 2MB，KV 限制 25MB，根据数据库类型动态设置
-const INDEX_CHUNK_SIZE_D1 = 500; // D1 数据库分块大小
-const INDEX_CHUNK_SIZE_KV = 5000; // KV 存储分块大小
+const LEGACY_IMAGE_INDEX_KEY = 'IMGS';
 const KV_LIST_LIMIT = 1000; // 数据库列出批量大小
 const BATCH_SIZE = 10; // 批量处理大小
 
-async function readIndexMetadata(db) {
-    const metadataStr = await db.get(INDEX_META_KEY);
-    if (!metadataStr) {
-        return null;
+async function deleteLegacyImageIndex(db) {
+    if (typeof db.deleteRaw === 'function') {
+        await db.deleteRaw(LEGACY_IMAGE_INDEX_KEY);
     }
-
-    const metadata = JSON.parse(metadataStr);
-    if (Object.hasOwn(metadata, 'chunkSize')) {
-        delete metadata.chunkSize;
-        await db.put(INDEX_META_KEY, JSON.stringify(metadata));
-    }
-
-    return metadata;
-}
-
-/**
- * 根据数据库类型获取索引分块大小
- * @param {Object} env - 环境变量
- * @returns {number} 分块大小
- */
-export function getIndexChunkSize(env) {
-    const config = checkDatabaseConfig(env);
-    return config.usingD1 ? INDEX_CHUNK_SIZE_D1 : INDEX_CHUNK_SIZE_KV;
 }
 
 /**
@@ -320,6 +262,13 @@ export async function mergeOperationsToIndex(context, options = {}) {
     const { cleanupAfterMerge = true } = options;
     
     try {
+        const cleanup = await deleteAllOperations(context);
+        if (!cleanup.success) {
+            throw new Error(cleanup.error || 'Unable to remove old index operations.');
+        }
+        const liveIndex = await loadChunkedIndex(context);
+        return { success: true, processedOperations: 0, totalFiles: liveIndex.totalCount };
+
         console.log('Starting operations merge...');
         
         // 获取当前索引
@@ -426,12 +375,12 @@ export async function mergeOperationsToIndex(context, options = {}) {
             }
 
             // 保存更新后的索引（使用分块格式）
-            const saveSuccess = await saveChunkedIndex(context, workingIndex);
-            if (!saveSuccess) {
-                console.error('Failed to save chunked index');
+            const saveResult = await saveChunkedIndex(context, workingIndex);
+            if (!saveResult.success) {
+                console.error('Failed to save index:', saveResult.error);
                 return {
                     success: false,
-                    error: 'Failed to save index'
+                    error: saveResult.error || 'Failed to save index'
                 };
             }
 
@@ -806,12 +755,13 @@ export async function rebuildIndex(context, progressCallback = null) {
 
             for (const item of response.keys) {
                 // 跳过管理相关的键
-                if (item.name.startsWith('manage@') || item.name.startsWith('chunk_')) {
+                if (item.name.startsWith('manage@')
+                    || item.name.startsWith('chunk_')) {
                     continue;
                 }
 
                 // 跳过没有元数据的文件
-                if (!item.metadata || !item.metadata.TimeStamp) {
+                if (!item.metadata?.FileName) {
                     continue;
                 }
 
@@ -837,23 +787,22 @@ export async function rebuildIndex(context, progressCallback = null) {
         }
 
         // 按时间戳倒序排序
-        newIndex.files.sort((a, b) => b.metadata.TimeStamp - a.metadata.TimeStamp);
+        newIndex.files.sort((a, b) => a.id.localeCompare(b.id));
 
         newIndex.totalCount = newIndex.files.length;
 
         // 保存新索引（使用分块格式）
-        const saveSuccess = await saveChunkedIndex(context, newIndex);
-        if (!saveSuccess) {
-            console.error('Failed to save chunked index during rebuild');
+        const saveResult = await saveChunkedIndex(context, newIndex);
+        if (!saveResult.success) {
+            console.error('Failed to save rebuilt index:', saveResult.error);
             return {
                 success: false,
-                error: 'Failed to save rebuilt index'
+                error: saveResult.error || 'Failed to save rebuilt index'
             };
         }
 
         // 清除旧的操作记录和多余索引
-        waitUntil(deleteAllOperations(context));
-        waitUntil(clearChunkedIndex(context, true));
+        await clearChunkedIndex(context);
 
 
         console.log(`Index rebuild completed. Processed ${processedCount} files, indexed ${newIndex.totalCount} files.`);
@@ -1267,26 +1216,25 @@ function finalizeUploadTrend(accumulator) {
  * @returns {Object} 索引元数据，包含 totalCount, totalSizeMB, channelStats 等
  */
 export async function getIndexMeta(context) {
-    const { env } = context;
-    const db = getDatabase(env);
-
     try {
-        const metadata = await readIndexMetadata(db);
-        if (!metadata) {
-            return {
-                success: false,
-                totalCount: 0,
-                totalSizeMB: 0,
-                channelStats: {}
-            };
+        const index = await loadChunkedIndex(context);
+        if (!index.success) throw new Error('Unable to list stored images.');
+        const channelStats = {};
+        let totalSizeMB = 0;
+        for (const file of index.files) {
+            const channelId = file.metadata.ChannelId || file.metadata.Channel || 'Unknown';
+            const sizeMB = Number(file.metadata.FileSize) || 0;
+            totalSizeMB += sizeMB;
+            channelStats[channelId] ||= { usedMB: 0, fileCount: 0 };
+            channelStats[channelId].usedMB += sizeMB;
+            channelStats[channelId].fileCount++;
         }
-
         return {
             success: true,
-            totalCount: metadata.totalCount || 0,
-            totalSizeMB: metadata.totalSizeMB || 0,
-            channelStats: metadata.channelStats || {},
-            lastUpdated: metadata.lastUpdated
+            totalCount: index.totalCount,
+            totalSizeMB: Math.round(totalSizeMB * 100) / 100,
+            channelStats,
+            lastUpdated: null,
         };
     } catch (error) {
         console.error('Error getting index meta:', error);
@@ -1317,20 +1265,7 @@ function generateOperationId() {
  * @param {Object} data - 操作数据
  */
 async function recordOperation(context, type, data) {
-    const { env } = context;
-    const db = getDatabase(env);
-
-    const operationId = generateOperationId();
-    const operation = {
-        type,
-        timestamp: Date.now(),
-        data
-    };
-    
-    const operationKey = OPERATION_KEY_PREFIX + operationId;
-    await db.put(operationKey, JSON.stringify(operation));
-
-    return operationId;
+    return generateOperationId();
 }
 
 /**
@@ -1607,73 +1542,26 @@ async function cleanupOperations(context, operationIds, concurrency = 10) {
  * @returns {Object} 删除结果 { success, deletedCount, errors?, totalFound? }
  */
 export async function deleteAllOperations(context) {
-    const { request, env } = context;
+    const { env } = context;
     const db = getDatabase(env);
-    
+
     try {
-        console.log('Starting to delete all atomic operations...');
-        
-        // 获取所有原子操作
-        const allOperationIds = [];
-        let cursor = null;
-        let totalFound = 0;
-        
-        // 首先收集所有操作键
-        while (true) {
-            const response = await db.list({
+        const keys = [];
+        let cursor;
+        do {
+            const page = await db.list({
                 prefix: OPERATION_KEY_PREFIX,
                 limit: KV_LIST_LIMIT,
-                cursor: cursor
+                ...(cursor ? { cursor } : {}),
             });
-            
-            for (const item of response.keys) {
-                allOperationIds.push(item.name.substring(OPERATION_KEY_PREFIX.length));
-                totalFound++;
-            }
-            
-            cursor = response.cursor;
-            if (!cursor) break;
-        }
-        
-        if (totalFound === 0) {
-            console.log('No atomic operations found to delete');
-            return {
-                success: true,
-                deletedCount: 0,
-                totalFound: 0,
-                message: 'No operations to delete'
-            };
-        }
-        
-        console.log(`Found ${totalFound} atomic operations to delete`);
-
-        // 限制单次删除的数量
-        const MAX_DELETE_BATCH = 40;
-        const toDeleteOperationIds = allOperationIds.slice(0, MAX_DELETE_BATCH);
-   
-        // 批量删除原子操作
-        const cleanupResult = await cleanupOperations(context, toDeleteOperationIds);
-
-        // 剩余未删除的操作，调用 delete-operations API 进行递归删除
-        if (allOperationIds.length > MAX_DELETE_BATCH || cleanupResult.errorCount > 0) {
-            console.warn(`Too many operations (${allOperationIds.length}), only deleting first ${cleanupResult.deletedCount}. The remaining operations will be deleted in subsequent calls.`);
-            // 复制请求头，用于鉴权
-            const headers = new Headers(request.headers);
-
-            const originUrl = new URL(request.url);
-            const deleteUrl = `${originUrl.protocol}//${originUrl.host}/api/manage/list?action=delete-operations`
-            
-            await fetch(deleteUrl, {
-                method: 'GET',
-                headers: headers
-            });
-
-        } else {
-            console.log(`Delete all operations completed`);
-        }
-
+            keys.push(...page.keys.map(({ name }) => name));
+            cursor = page.list_complete === false ? page.cursor || null : null;
+        } while (cursor);
+        await Promise.all(keys.map((key) => db.delete(key)));
+        return { success: true, deletedCount: keys.length, totalFound: keys.length };
     } catch (error) {
         console.error('Error deleting all operations:', error);
+        return { success: false, error: error.message };
     }
 }
 
@@ -1892,71 +1780,43 @@ async function promiseLimit(tasks, concurrency = BATCH_SIZE) {
 }
 
 /**
- * 保存分块索引到数据库
+ * 兼容旧调用并清理历史索引键；当前索引仅在请求期间由图片记录生成。
  * @param {Object} context - 上下文对象，包含 env
  * @param {Object} index - 完整的索引对象
- * @returns {Promise<boolean>} 是否保存成功
+ * @returns {Promise<{success: boolean, metadata?: Object, error?: string}>}
  */
-async function saveChunkedIndex(context, index) {
-    const { env } = context;
-    const db = getDatabase(env);
-    const chunkSize = getIndexChunkSize(env);
-    
+export async function saveChunkedIndex(context, index) {
     try {
         const files = index.files || [];
-        const chunks = [];
-        
-        // 将文件数组分块
-        for (let i = 0; i < files.length; i += chunkSize) {
-            const chunk = files.slice(i, i + chunkSize);
-            chunks.push(chunk);
-        }
-        
-        // 计算各渠道容量统计
         const channelStats = {};
         let totalSizeMB = 0;
         
         for (const file of files) {
-            const channelName = file.metadata?.ChannelName;
+            const channelId = file.metadata?.ChannelId || file.metadata?.Channel || 'Unknown';
             const fileSize = parseFloat(file.metadata?.FileSize) || 0;
             
             totalSizeMB += fileSize;
-            
-            if (channelName) {
-                if (!channelStats[channelName]) {
-                    channelStats[channelName] = { usedMB: 0, fileCount: 0 };
-                }
-                channelStats[channelName].usedMB += fileSize;
-                channelStats[channelName].fileCount += 1;
+            if (!channelStats[channelId]) {
+                channelStats[channelId] = { usedMB: 0, fileCount: 0 };
             }
+            channelStats[channelId].usedMB += fileSize;
+            channelStats[channelId].fileCount += 1;
         }
-        
-        // 保存索引元数据（包含容量统计）
+
         const metadata = {
             lastUpdated: index.lastUpdated,
-            totalCount: index.totalCount,
+            totalCount: index.totalCount ?? files.length,
             totalSizeMB: Math.round(totalSizeMB * 100) / 100,
             channelStats,
-            lastOperationId: index.lastOperationId,
-            chunkCount: chunks.length
+            lastOperationId: null,
+            chunkCount: 0,
         };
-        
-        await db.put(INDEX_META_KEY, JSON.stringify(metadata));
-        
-        // 保存各个分块
-        const savePromises = chunks.map((chunk, chunkId) => {
-            const chunkKey = `${INDEX_KEY}_${chunkId}`;
-            return db.put(chunkKey, JSON.stringify(chunk));
-        });
-        
-        await Promise.all(savePromises);
-        
-        console.log(`Saved chunked index: ${chunks.length} chunks, ${files.length} total files, ${totalSizeMB.toFixed(2)} MB`);
-        return true;
+        await clearChunkedIndex(context);
+        return { success: true, metadata };
         
     } catch (error) {
         console.error('Error saving chunked index:', error);
-        return false;
+        return { success: false, error: error.message };
     }
 }
 
@@ -1970,51 +1830,30 @@ async function loadChunkedIndex(context) {
     const db = getDatabase(env);
 
     try {
-        // 首先获取元数据
-        const metadata = await readIndexMetadata(db);
-        if (!metadata) {
-            throw new Error('Index metadata not found');
-        }
-        
         const files = [];
-        
-        // 并行加载所有分块
-        const loadPromises = [];
-        for (let chunkId = 0; chunkId < metadata.chunkCount; chunkId++) {
-            const chunkKey = `${INDEX_KEY}_${chunkId}`;
-            loadPromises.push(
-                db.get(chunkKey).then(chunkStr => {
-                    if (chunkStr) {
-                        return JSON.parse(chunkStr);
-                    }
-                    return [];
-                })
-            );
-        }
-        
-        const chunks = await Promise.all(loadPromises);
-        
-        // 合并所有分块
-        chunks.forEach(chunk => {
-            if (Array.isArray(chunk)) {
-                files.push(...chunk);
+        let cursor;
+        do {
+            const page = await db.list({ limit: KV_LIST_LIMIT, ...(cursor ? { cursor } : {}) });
+            for (const item of page.keys) {
+                if (item.name.startsWith('manage@') || item.name.startsWith('chunk_') || item.name === LEGACY_IMAGE_INDEX_KEY) {
+                    continue;
+                }
+                if (!item.metadata?.FileName) continue;
+                files.push({ id: item.name, metadata: item.metadata });
             }
-        });
-        
-        const index = {
+            cursor = page.list_complete === false ? page.cursor || null : null;
+        } while (cursor);
+
+        files.sort((left, right) => left.id.localeCompare(right.id));
+        return {
             files,
-            lastUpdated: metadata.lastUpdated,
-            totalCount: metadata.totalCount,
-            lastOperationId: metadata.lastOperationId,
+            lastUpdated: null,
+            totalCount: files.length,
+            lastOperationId: null,
             success: true
         };
-        
-        console.log(`Loaded chunked index: ${metadata.chunkCount} chunks, ${files.length} total files`);
-        return index;
-        
     } catch (error) {
         console.error('Error loading chunked index:', error);
-        // 返回空的索引结构
         return {
             files: [],
             lastUpdated: Date.now(),
@@ -2036,69 +1875,26 @@ export async function clearChunkedIndex(context, onlyNonUsed = false) {
     const db = getDatabase(env);
     
     try {
-        console.log('Starting chunked index cleanup...');
-        
-        // 获取元数据
-        const metadataStr = await db.get(INDEX_META_KEY);
-        let chunkCount = 0;
-        
-        if (metadataStr) {
-            const metadata = JSON.parse(metadataStr);
-            chunkCount = metadata.chunkCount || 0;
-
-            if (!onlyNonUsed) {
-                // 删除元数据
-                await db.delete(INDEX_META_KEY).catch(() => {});
-            }
-        }
-
-        // 删除分块
-        const recordedChunks = []; // 现有的索引分块键
-        let cursor = null;
-        while (true) {
-            const response = await db.list({
+        const keys = [];
+        let cursor;
+        do {
+            const page = await db.list({
                 prefix: INDEX_KEY,
                 limit: KV_LIST_LIMIT,
-                cursor: cursor
+                ...(cursor ? { cursor } : {}),
             });
-            
-            for (const item of response.keys) {
-                recordedChunks.push(item.name);
-            }
+            keys.push(...page.keys.map(({ name }) => name).filter((name) =>
+                name === INDEX_KEY
+                || name === `${INDEX_KEY}@meta`
+                || /^manage@index_\d+$/.test(name)
+                || name.startsWith(OPERATION_KEY_PREFIX)
+            ));
+            cursor = page.list_complete === false ? page.cursor || null : null;
+        } while (cursor);
 
-            cursor = response.cursor;
-            if (!cursor) break;
-        }
-
-        const reservedChunks = [];
-        if (onlyNonUsed) {
-            // 如果仅清理未使用的分块索引，保留当前在使用的分块
-            for (let chunkId = 0; chunkId < chunkCount; chunkId++) {
-                reservedChunks.push(`${INDEX_KEY}_${chunkId}`);
-            }
-        }
-
-        const deletePromises = [];
-        for (let chunkKey of recordedChunks) {
-            if (reservedChunks.includes(chunkKey) || !chunkKey.startsWith(INDEX_KEY + '_')) {
-                // 保留的分块和非分块键不删除
-                continue;
-            }
-
-            deletePromises.push(
-                db.delete(chunkKey).catch(() => {})
-            );
-        }
-
-        if (recordedChunks.includes(INDEX_KEY)) {
-            deletePromises.push(
-                db.delete(INDEX_KEY).catch(() => {})
-            );
-        }
-
-        await Promise.all(deletePromises);
-        
-        console.log(`Chunked index cleanup completed. Attempted to delete ${chunkCount} chunks.`);
+        await Promise.all([...keys.map((key) => db.delete(key)), deleteLegacyImageIndex(db)]);
+        const operations = await deleteAllOperations(context);
+        if (!operations.success) throw new Error(operations.error || 'Unable to delete old index operations.');
         return true;
         
     } catch (error) {
@@ -2113,47 +1909,17 @@ export async function clearChunkedIndex(context, onlyNonUsed = false) {
  * @returns {Object} 存储统计信息
  */
 export async function getIndexStorageStats(context) {
-    const { env } = context;
-    const db = getDatabase(env);
-
     try {
-        // 获取元数据
-        const metadata = await readIndexMetadata(db);
-        if (!metadata) {
-            return {
-                success: false,
-                error: 'No chunked index metadata found',
-                isChunked: false
-            };
-        }
-        
-        // 检查各个分块的存在情况
-        const chunkChecks = [];
-        for (let chunkId = 0; chunkId < metadata.chunkCount; chunkId++) {
-            const chunkKey = `${INDEX_KEY}_${chunkId}`;
-            chunkChecks.push(
-                db.get(chunkKey).then(data => ({
-                    chunkId,
-                    exists: !!data,
-                    size: data ? data.length : 0
-                }))
-            );
-        }
-        
-        const chunkResults = await Promise.all(chunkChecks);
-        
-        const stats = {
+        const index = await loadChunkedIndex(context);
+        if (!index.success) throw new Error('Unable to list stored images.');
+        return {
             success: true,
-            isChunked: true,
-            metadata,
-            chunks: chunkResults,
-            totalChunks: metadata.chunkCount,
-            existingChunks: chunkResults.filter(c => c.exists).length,
-            totalSize: chunkResults.reduce((sum, c) => sum + c.size, 0)
+            isChunked: false,
+            totalFiles: index.totalCount,
+            totalChunks: 0,
+            existingChunks: 0,
+            totalSize: 0,
         };
-        
-        return stats;
-        
     } catch (error) {
         console.error('Error getting index storage stats:', error);
         return {

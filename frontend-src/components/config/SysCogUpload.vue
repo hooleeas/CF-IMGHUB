@@ -8,6 +8,19 @@ import "core-js/modules/es.iterator.some.js";
 import fetchWithAuth from '@/utils/fetchWithAuth';
 import ChannelIcon from '@/components/icons/ChannelIcon.vue';
 import CustomSelect from './CustomSelect.vue';
+import notifyToast from '@/utils/notifyToast';
+
+function generateChannelId(usedIds) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const bytes = new Uint8Array(5);
+    window.crypto.getRandomValues(bytes);
+    const id = [...bytes].map(byte => alphabet[byte % alphabet.length]).join('');
+    if (!usedIds.has(id)) return id;
+  }
+  throw new Error('无法生成唯一的渠道 ID。');
+}
+
 export default {
   components: {
     ChannelIcon,
@@ -117,11 +130,6 @@ export default {
         accessKeyId: '',
         secretAccessKey: '',
         pathStyle: false,
-        quota: {
-          enabled: false,
-          limitGB: 10,
-          threshold: 95
-        },
         // Discord
         channelId: '',
         isNitro: false,
@@ -137,14 +145,42 @@ export default {
         headersText: '',
         createDirectory: true
       },
-      // 容量统计数据
-      quotaStats: {},
-      quotaLoading: false,
       // 加载状态
       loading: false
     };
   },
+  watch: {
+    enabledChannelOptions: {
+      deep: true,
+      handler(options) {
+        window.dispatchEvent(new CustomEvent('imgbed:upload-channels-changed', {
+          detail: { options }
+        }));
+      }
+    }
+  },
   computed: {
+    enabledChannelOptions() {
+      const channelLabels = {
+        telegram: 'Telegram',
+        cfr2: 'R2',
+        s3: 'S3',
+        discord: 'Discord',
+        huggingface: 'HuggingFace',
+        webdav: 'WebDAV'
+      };
+      return this.channels.flatMap(({ value }) =>
+        this.getChannelList(value)
+          .filter(channel => channel.enabled)
+          .map(channel => {
+            const typeLabel = channelLabels[value];
+            const label = channel.name === typeLabel
+              ? typeLabel
+              : `${typeLabel} — ${channel.name}`;
+            return { value: channel.id, label, label_en: label };
+          })
+      );
+    },
     // 筛选下拉框选项
     filterOptions() {
       return [{
@@ -352,6 +388,12 @@ export default {
       };
       return map[type];
     },
+    createChannelId() {
+      const usedIds = new Set(this.channels.flatMap(({ value }) =>
+        this.getChannelList(value).map(channel => channel.id)
+      ));
+      return generateChannelId(usedIds);
+    },
     // 是否有负载均衡选项
     hasLoadBalance(type) {
       return ['telegram', 's3', 'discord', 'huggingface', 'webdav'].includes(type);
@@ -405,14 +447,6 @@ export default {
         this.editChannel.headersText = this.headersToText(this.editChannel.headers);
         this.editChannel.createDirectory = this.editChannel.createDirectory !== false;
       }
-      // 确保 quota 对象存在
-      if (!this.editChannel.quota) {
-        this.editChannel.quota = {
-          enabled: false,
-          limitGB: 10,
-          threshold: 95
-        };
-      }
       this.showEditDialog = true;
     },
     // 从详情页打开编辑
@@ -435,11 +469,6 @@ export default {
         accessKeyId: '',
         secretAccessKey: '',
         pathStyle: false,
-        quota: {
-          enabled: false,
-          limitGB: 10,
-          threshold: 95
-        },
         channelId: '',
         isNitro: false,
         repo: '',
@@ -482,11 +511,6 @@ export default {
         accessKeyId: '',
         secretAccessKey: '',
         pathStyle: false,
-        quota: {
-          enabled: false,
-          limitGB: 10,
-          threshold: 95
-        },
         channelId: '',
         isNitro: false,
         repo: '',
@@ -508,23 +532,27 @@ export default {
           type,
           name
         } = this.newChannel;
+        if (type === 'cfr2' && this.cfr2Settings.channels.length > 0) {
+          notifyToast(this.$t('sysUpload.r2ChannelLimit'), 'error');
+          return;
+        }
         const settings = this.getSettings(type);
 
         // 检查是否为保留名称（{type}_env）
-        const reservedNames = ['Telegram_env', 'R2_env', 'S3_env', 'Discord_env', 'HuggingFace_env', 'WebDAV_env'];
+        const reservedNames = ['Telegram_env', 'S3_env', 'Discord_env', 'HuggingFace_env', 'WebDAV_env'];
         if (reservedNames.includes(name)) {
-          this.$message.warning(this.$t('sysUpload.reservedName'));
+          notifyToast(this.$t('sysUpload.reservedName'), 'error');
           return;
         }
 
         // 检查名称是否重复
         const isDuplicate = settings.channels.some(ch => ch.name === name);
         if (isDuplicate) {
-          this.$message.warning(this.$t('sysUpload.duplicateName'));
+          notifyToast(this.$t('sysUpload.duplicateName'), 'error');
           return;
         }
         let newChannelData = {
-          id: settings.channels.length + 1,
+          id: this.createChannelId(),
           name: this.newChannel.name,
           type: type,
           savePath: 'database',
@@ -547,10 +575,7 @@ export default {
             region: this.newChannel.region,
             accessKeyId: this.newChannel.accessKeyId,
             secretAccessKey: this.newChannel.secretAccessKey,
-            pathStyle: this.newChannel.pathStyle,
-            quota: {
-              ...this.newChannel.quota
-            }
+            pathStyle: this.newChannel.pathStyle
           });
         } else if (type === 'discord') {
           Object.assign(newChannelData, {
@@ -568,7 +593,7 @@ export default {
         } else if (type === 'webdav') {
           const headers = this.parseHeadersText(this.newChannel.headersText);
           if (headers === null) {
-            this.$message.warning(this.$t('sysUpload.webdavHeadersInvalid'));
+            notifyToast(this.$t('sysUpload.webdavHeadersInvalid'), 'error');
             return;
           }
           Object.assign(newChannelData, {
@@ -577,10 +602,7 @@ export default {
             password: this.newChannel.password,
             publicUrl: this.newChannel.publicUrl,
             headers,
-            createDirectory: this.newChannel.createDirectory !== false,
-            quota: {
-              ...this.newChannel.quota
-            }
+            createDirectory: this.newChannel.createDirectory !== false
           });
         }
         settings.channels.push(newChannelData);
@@ -595,15 +617,15 @@ export default {
         if (!valid) return;
         const settings = this.getSettings(this.currentChannelType);
         const currentIndex = this.currentChannelIndex;
-        const originalName = settings.channels[currentIndex]?.name || this.editChannel.name;
         const editedChannel = {
           ...this.editChannel,
-          name: originalName
+          name: this.editChannel.name.trim()
         };
+        delete editedChannel.quota;
         if (this.currentChannelType === 'webdav') {
           const headers = this.parseHeadersText(editedChannel.headersText);
           if (headers === null) {
-            this.$message.warning(this.$t('sysUpload.webdavHeadersInvalid'));
+            notifyToast(this.$t('sysUpload.webdavHeadersInvalid'), 'error');
             return;
           }
           editedChannel.headers = headers;
@@ -620,7 +642,7 @@ export default {
     deleteChannel(type, index) {
       const channel = this.getChannelList(type)[index];
       if (channel.fixed) {
-        this.$message.warning(this.$t('sysUpload.fixedChannelCannotDelete'));
+        notifyToast(this.$t('sysUpload.fixedChannelCannotDelete'), 'error');
         return;
       }
       this.$confirm(this.$t('sysUpload.deleteChannelConfirm'), this.$t('common.warning'), {
@@ -630,15 +652,11 @@ export default {
       }).then(() => {
         const settings = this.getSettings(type);
         settings.channels.splice(index, 1);
-        // 重新调整 id
-        settings.channels.forEach((item, i) => {
-          item.id = i + 1;
-        });
         // 自动保存
         this.saveSettings();
       }).catch(() => {});
     },
-    saveSettings() {
+    async saveSettings() {
       // 保存设置
       const settings = {
         telegram: this.telegramSettings,
@@ -648,168 +666,28 @@ export default {
         huggingface: this.huggingfaceSettings,
         webdav: this.webdavSettings
       };
-      fetchWithAuth('/api/manage/sysConfig/upload', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(settings)
-      }).then(() => {
-        this.$message.success(this.$t('sysOthers.settingsSaved'));
-      });
-    },
-    // 获取容量统计（重新计算）
-    async refreshQuota() {
-      this.quotaLoading = true;
       try {
-        // 使用 POST 请求重新统计容量（会触发索引重建）
-        const response = await fetchWithAuth('/api/manage/quota', {
-          method: 'POST'
+        const response = await fetchWithAuth('/api/manage/sysConfig/upload', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(settings)
         });
-        const data = await response.json();
-        if (data.success) {
-          this.quotaStats = data.channelStats || {};
-        } else {
-          // 如果重新统计失败，尝试获取已有数据
-          const getResponse = await fetchWithAuth('/api/manage/quota');
-          const getData = await getResponse.json();
-          if (getData.success) {
-            this.quotaStats = getData.quotaStats || {};
-          }
-        }
+        if (!response.ok) throw new Error(`Settings save failed (${response.status})`);
+        notifyToast(this.$t('sysOthers.settingsSaved'));
       } catch (error) {
-        console.error('Failed to refresh quota stats:', error);
-      } finally {
-        this.quotaLoading = false;
+        console.error('Failed to save upload settings:', error);
+        notifyToast(error.message || '保存上传渠道设置失败，请稍后重试。', 'error');
       }
     },
-    // 获取容量统计（仅读取，不重建索引）
-    async loadQuotaStats() {
-      try {
-        const response = await fetchWithAuth('/api/manage/quota');
-        const data = await response.json();
-        if (data.success) {
-          this.quotaStats = data.quotaStats || {};
-        }
-      } catch (error) {
-        console.error('Failed to load quota stats:', error);
-      }
-    },
-    // 获取渠道已用容量 (GB)
-    getChannelUsedGB(channel) {
-      const stats = this.quotaStats[channel.name];
-      if (!stats) return 0;
-      return (stats.usedMB || 0) / 1024;
-    },
-    // 获取容量百分比
-    getQuotaPercentage(channel) {
-      const usedGB = this.getChannelUsedGB(channel);
-      const limitGB = channel.quota?.limitGB || 10;
-      const percentage = usedGB / limitGB * 100;
-      return Math.min(100, Math.round(percentage * 10) / 10);
-    },
-    // 获取进度条状态
-    getQuotaStatus(channel) {
-      const percentage = this.getQuotaPercentage(channel);
-      const threshold = channel.quota?.threshold || 95;
-      if (percentage >= threshold) return 'exception';
-      if (percentage >= 80) return 'warning';
-      return 'success';
-    },
-    // 获取容量文本
-    getQuotaText(channel) {
-      const usedGB = this.getChannelUsedGB(channel);
-      const limitGB = channel.quota?.limitGB || 10;
-      return `${usedGB.toFixed(2)} / ${limitGB} GB`;
-    },
-    // 判断是否超过阈值
-    isQuotaExceeded(channel) {
-      const percentage = this.getQuotaPercentage(channel);
-      const threshold = channel.quota?.threshold || 95;
-      return percentage >= threshold;
-    },
-    // 获取状态文本
-    getQuotaStatusText(channel) {
-      const percentage = this.getQuotaPercentage(channel);
-      const threshold = channel.quota?.threshold || 95;
-      if (percentage >= threshold) {
-        return `⚠️ 已达到容量阈值 (${threshold}%)，渠道写入已暂停`;
-      }
-      if (percentage >= 80) {
-        return `⚡ 容量使用较高，接近阈值`;
-      }
-      return `✓ 容量正常`;
-    },
-    // 容量限制开关变化时
-    async onQuotaEnabledChange(enabled, channel) {
-      if (enabled && channel.name) {
-        // 首次启用时，检查是否有该渠道的统计数据
-        const stats = this.quotaStats[channel.name];
-        if (!stats) {
-          // 没有统计数据，提示用户需要重新统计
-          this.$confirm(this.$t('sysUpload.quotaInitConfirm'), this.$t('sysUpload.quotaInitTitle'), {
-            confirmButtonText: this.$t('sysUpload.quotaInitConfirmBtn'),
-            cancelButtonText: this.$t('sysUpload.quotaInitCancelBtn'),
-            type: 'info'
-          }).then(async () => {
-            await this.recalculateQuota();
-          }).catch(() => {
-            this.$message.info(this.$t('sysUpload.quotaInitLater'));
-          });
-        }
-      }
-    },
-    // 重新统计容量
-    async recalculateQuota() {
-      this.quotaLoading = true;
-      try {
-        this.$message.info(this.$t('sysUpload.quotaCalculating'));
-        const response = await fetchWithAuth('/api/manage/quota', {
-          method: 'POST'
-        });
-        const data = await response.json();
-        if (data.success) {
-          this.quotaStats = data.channelStats || {};
-          this.$message.success(this.$t('sysUpload.quotaCalculateSuccess'));
-        } else {
-          this.$message.error(this.$t('sysUpload.quotaCalculateError') + (data.error || ''));
-        }
-      } catch (error) {
-        console.error('Failed to recalculate quota:', error);
-        this.$message.error(this.$t('sysUpload.quotaCalculateFailed'));
-      } finally {
-        this.quotaLoading = false;
-      }
-    }
   },
   mounted() {
     this.loading = true;
     // 获取上传设置
     fetchWithAuth('/api/manage/sysConfig/upload').then(response => response.json()).then(data => {
       this.telegramSettings = data.telegram;
-      // 确保 R2 渠道有 quota 默认值
-      if (data.cfr2 && data.cfr2.channels) {
-        data.cfr2.channels = data.cfr2.channels.map(channel => ({
-          ...channel,
-          quota: channel.quota || {
-            enabled: false,
-            limitGB: 10,
-            threshold: 95
-          }
-        }));
-      }
       this.cfr2Settings = data.cfr2;
-      // 确保 S3 渠道有 quota 默认值
-      if (data.s3 && data.s3.channels) {
-        data.s3.channels = data.s3.channels.map(channel => ({
-          ...channel,
-          quota: channel.quota || {
-            enabled: false,
-            limitGB: 10,
-            threshold: 95
-          }
-        }));
-      }
       this.s3Settings = data.s3;
       // 确保 Discord 渠道有默认值
       if (data.discord && data.discord.channels) {
@@ -841,20 +719,13 @@ export default {
           password: channel.password || '',
           publicUrl: channel.publicUrl || '',
           headers: channel.headers || {},
-          createDirectory: channel.createDirectory !== false,
-          quota: channel.quota || {
-            enabled: false,
-            limitGB: 10,
-            threshold: 95
-          }
+          createDirectory: channel.createDirectory !== false
         }));
       }
       this.webdavSettings = data.webdav || {
         loadBalance: {},
         channels: []
       };
-      // 加载容量统计（仅读取，不重建索引）
-      this.loadQuotaStats();
     }).finally(() => {
       this.loading = false;
     });

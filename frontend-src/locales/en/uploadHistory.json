@@ -1,0 +1,19 @@
+{
+  "title": "History",
+  "totalRecords": "{count} records",
+  "switchView": "Switch View",
+  "clearRecords": "Clear Records",
+  "loading": "Loading...",
+  "pullToLoadMore": "Pull to load more",
+  "noMoreRecords": "No more records",
+  "emptyHistory": "No upload history",
+  "linkCopied": "Link copied",
+  "copyFailed": "Copy failed",
+  "clearConfirmTitle": "Notice",
+  "clearConfirmMessage": "Are you sure you want to clear all upload records?",
+  "clearConfirmOk": "OK",
+  "clearConfirmCancel": "Cancel",
+  "recordsCleared": "Records cleared",
+  "deleteConfirmMessage": "Are you sure you want to delete this record?",
+  "recordDeleted": "Record deleted"
+}

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { onRequest } from '../functions/api/manage/batch/kv.js';
+import { encodeSystemConfigValue } from '../functions/utils/sysConfigStorage.js';
 
 function createKV(entries = [], metadataEntries = []) {
     const values = new Map(entries);
@@ -22,10 +23,13 @@ function createKV(entries = [], metadataEntries = []) {
         async delete(key) {
             values.delete(key);
         },
-        async list({ cursor, limit = 1000 } = {}) {
-            const names = [...values.keys()].sort();
+        async list({ cursor, limit = 1000, prefix = '' } = {}) {
+            const names = [...values.keys()].filter((name) => name.startsWith(prefix)).sort();
             const offset = cursor ? Number(cursor) : 0;
-            const keys = names.slice(offset, offset + limit).map((name) => ({ name }));
+            const keys = names.slice(offset, offset + limit).map((name) => {
+                const entryMetadata = metadata.get(name);
+                return entryMetadata ? { name, metadata: entryMetadata } : { name };
+            });
             const nextOffset = offset + keys.length;
             return {
                 keys,
@@ -85,6 +89,80 @@ test('lists KV entries in pages and formats JSON for display', async () => {
     assert.deepEqual(valueResult.entry.raw, { index: 0 });
 });
 
+test('lists each image KV record individually and hides the legacy IMGS index', async () => {
+    const kv = createKV(
+        [['photo.webp', ''], ['other-record', ''], ['IMGS', '{"IMG":[]}']],
+        [['photo.webp', { FileName: 'photo.webp', FileType: 'image/webp', PrivateField: 'hidden' }]]
+    );
+    const response = await onRequest(context(kv, '/api/manage/batch/kv'));
+    const result = await response.json();
+
+    assert.deepEqual(result.entries, [
+        { name: 'other-record' },
+        { name: 'photo.webp' },
+    ]);
+});
+
+test('lists IMG_filename records as ordinary KV entries', async () => {
+    const kv = createKV([['IMG_photo.webp', JSON.stringify({
+        FILE_NAME: 'photo.webp',
+        FILE_TYPE: 'image/webp',
+        FILE_SIZE: 4118,
+        CHANNEL: 'R2ABC',
+        URL: '/file/photo.webp',
+    })]]);
+    const response = await onRequest(context(kv, '/api/manage/batch/kv'));
+
+    assert.deepEqual((await response.json()).entries, [{ name: 'IMG_photo.webp' }]);
+});
+
+test('migrates all legacy image KV records when explicitly confirmed', async () => {
+    const config = encodeSystemConfigValue({
+        site: {},
+        upload: {
+            cfr2: { channels: [{ name: 'R2' }] },
+        },
+    });
+    const channelId = JSON.parse(config).CHANNELS[0].ID;
+    const kv = createKV(
+        [
+            ['photo.webp', 'legacy-content'],
+            ['setting', 'value'],
+            ['manage@index@operation_123', '{"type":"add"}'],
+        ],
+        [['photo.webp', {
+            FileName: 'photo.webp',
+            FileType: 'image/webp',
+            FileSizeBytes: 4118,
+            Channel: 'CloudflareR2',
+            ChannelName: 'R2',
+            ChannelId: channelId,
+        }]]
+    );
+    kv.values.set('CONFIG', config);
+    const denied = await onRequest(context(kv, '/api/manage/batch/kv', 'POST', {
+        type: 'migrate_legacy_storage',
+        confirmation: 'no',
+    }));
+    assert.equal(denied.status, 400);
+
+    const response = await onRequest(context(kv, '/api/manage/batch/kv', 'POST', {
+        type: 'migrate_legacy_storage',
+        confirmation: 'MIGRATE_LEGACY_IMAGES',
+    }));
+    const result = await response.json();
+
+    assert.equal(response.status, 200, JSON.stringify(result));
+    assert.equal(result.images.scanned, 1);
+    assert.equal(result.images.migrated, 1);
+    assert.equal(result.images.failed, 0);
+    assert.equal(kv.values.has('photo.webp'), false);
+    const imageKey = [...kv.values.keys()].find((key) => /^IMG_[A-Z0-9]{20}$/.test(key));
+    assert.equal(JSON.parse(kv.values.get(imageKey)).CHANNEL, channelId);
+    assert.equal(kv.values.get('setting'), 'value');
+    assert.equal(kv.values.has('manage@index@operation_123'), false);
+});
+
 test('imports JSON entries only for same-origin requests', async () => {
     const kv = createKV();
     const deniedRequest = new Request('https://example.test/api/manage/batch/kv', {
@@ -95,6 +173,7 @@ test('imports JSON entries only for same-origin requests', async () => {
         },
         body: JSON.stringify({ type: 'import_all_json', payload: { KEY: { OK: true } } }),
     });
+
     const denied = await onRequest({ request: deniedRequest, env: { KV: kv } });
     assert.equal(denied.status, 403);
 
@@ -106,6 +185,28 @@ test('imports JSON entries only for same-origin requests', async () => {
     assert.equal((await imported.json()).count, 2);
     assert.equal(kv.values.get('KEY'), '{\n  "OK": true\n}');
     assert.equal(kv.values.get('RAW'), 'plain value');
+});
+
+test('rejects imports that would restore the obsolete IMGS index key', async () => {
+    const kv = createKV();
+    const request = new Request('https://example.test/api/manage/batch/kv', {
+        method: 'POST',
+        headers: {
+            Origin: 'https://example.test',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            type: 'import_all_json',
+            payload: { IMGS: { IMG: [] }, OTHER: { retained: true } },
+        }),
+    });
+
+    const response = await onRequest({ request, env: { KV: kv } });
+    const result = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.match(result.error, /IMGS/);
+    assert.equal(kv.values.size, 0);
 });
 
 test('requires an explicit confirmation before factory reset', async () => {
@@ -153,6 +254,22 @@ test('cleans default file metadata while preserving meaningful values', async ()
             { id: 'photo.jpg', metadata: fileMetadata },
             { id: 'blocked.jpg', metadata: meaningfulMetadata },
         ])],
+        ['IMG_default.webp', JSON.stringify({
+            FILE_NAME: 'default.webp',
+            UPLOAD_ADDRESS: '未知',
+            LIST_TYPE: 'None',
+            LABEL: 'None',
+            DIRECTORY: '',
+            TAGS: [],
+        })],
+        ['IMG_meaningful.webp', JSON.stringify({
+            FILE_NAME: 'meaningful.webp',
+            UPLOAD_ADDRESS: 'New York',
+            LIST_TYPE: 'Block',
+            LABEL: 'adult',
+            DIRECTORY: 'private/',
+            TAGS: ['reviewed'],
+        })],
         ['photo.jpg', ''],
         ['blocked.jpg', ''],
     ], [
@@ -178,4 +295,13 @@ test('cleans default file metadata while preserving meaningful values', async ()
     assert.deepEqual(JSON.parse(kv.values.get('manage@index_0'))[0].metadata, { FileName: 'photo.jpg' });
     assert.deepEqual(JSON.parse(kv.values.get('manage@index_0'))[1].metadata, meaningfulMetadata);
     assert.deepEqual(JSON.parse(kv.values.get('manage@index@meta')), { lastUpdated: 1 });
+    assert.deepEqual(JSON.parse(kv.values.get('IMG_default.webp')), { FILE_NAME: 'default.webp' });
+    assert.deepEqual(JSON.parse(kv.values.get('IMG_meaningful.webp')), {
+        FILE_NAME: 'meaningful.webp',
+        UPLOAD_ADDRESS: 'New York',
+        LIST_TYPE: 'Block',
+        LABEL: 'adult',
+        DIRECTORY: 'private/',
+        TAGS: ['reviewed'],
+    });
 });

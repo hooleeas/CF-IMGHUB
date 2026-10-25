@@ -2,9 +2,10 @@
  * D1 数据库操作工具类
  */
 import {
-    decodeSystemConfigValue,
-    encodeSystemConfigValue,
+    deleteSystemConfigCategory,
     getSystemConfigStorageKeys,
+    readSystemConfig,
+    writeSystemConfigCategory,
 } from './sysConfigStorage.js';
 
 class D1Database {
@@ -329,10 +330,15 @@ D1Database.prototype.put = function(key, value, options) {
         return this.putIndexOperation(operationId, operation);
     } else if (getSystemConfigStorageKeys(key)) {
         var configKeys = getSystemConfigStorageKeys(key);
-        return this.putSetting(
-            configKeys.storageKey,
-            encodeSystemConfigValue(value),
-            'SYSCONFIG'
+        var self = this;
+        return writeSystemConfigCategory(
+            this.getSetting.bind(this),
+            function(storageKey, storageValue) {
+                return self.putSetting(storageKey, storageValue, 'SYSCONFIG');
+            },
+            this.deleteSetting.bind(this),
+            configKeys.category,
+            value
         );
     } else if (key.startsWith('manage@')) {
         // 所有 manage@ 前缀的键统一存入 settings 表
@@ -356,25 +362,16 @@ D1Database.prototype.get = function(key) {
         });
     } else if (getSystemConfigStorageKeys(key)) {
         var configKeys = getSystemConfigStorageKeys(key);
-        return this.getSetting(configKeys.storageKey).then(function(value) {
-            if (value !== null) {
-                return decodeSystemConfigValue(value);
-            }
-
-            return self.getSetting(configKeys.legacyKey).then(function(legacyValue) {
-                if (legacyValue === null) {
-                    return null;
-                }
-
-                var migratedValue = encodeSystemConfigValue(legacyValue);
-                return self.putSetting(configKeys.storageKey, migratedValue, 'SYSCONFIG')
-                    .then(function() {
-                        return self.deleteSetting(configKeys.legacyKey);
-                    })
-                    .then(function() {
-                        return decodeSystemConfigValue(migratedValue);
-                    });
-            });
+        return readSystemConfig(
+            this.getSetting.bind(this),
+            function(storageKey, storageValue) {
+                return self.putSetting(storageKey, storageValue, 'SYSCONFIG');
+            },
+            this.deleteSetting.bind(this)
+        ).then(function(config) {
+            return Object.hasOwn(config, configKeys.category)
+                ? JSON.stringify(config[configKeys.category])
+                : null;
         });
     } else if (key.startsWith('manage@')) {
         return this.getSetting(key);
@@ -407,10 +404,14 @@ D1Database.prototype.delete = function(key) {
         return this.deleteIndexOperation(operationId);
     } else if (getSystemConfigStorageKeys(key)) {
         var configKeys = getSystemConfigStorageKeys(key);
-        return Promise.all([
-            this.deleteSetting(configKeys.storageKey),
-            this.deleteSetting(configKeys.legacyKey),
-        ]);
+        return deleteSystemConfigCategory(
+            this.getSetting.bind(this),
+            function(storageKey, storageValue) {
+                return self.putSetting(storageKey, storageValue, 'SYSCONFIG');
+            },
+            this.deleteSetting.bind(this),
+            configKeys.category
+        );
     } else if (key.startsWith('manage@')) {
         return this.deleteSetting(key);
     } else {

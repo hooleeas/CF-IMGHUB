@@ -1,0 +1,15 @@
+{
+  "previousMonth": "Previous month",
+  "nextMonth": "Next month",
+  "startDate": "Start date",
+  "endDate": "End date",
+  "rangeSeparator": "to",
+  "monthTitle": "{year}-{month}",
+  "weekdaySun": "Sun",
+  "weekdayMon": "Mon",
+  "weekdayTue": "Tue",
+  "weekdayWed": "Wed",
+  "weekdayThu": "Thu",
+  "weekdayFri": "Fri",
+  "weekdaySat": "Sat"
+}

@@ -9,6 +9,10 @@
   display: none !important;
 }
 
+.el-dialog.channel-dialog .channel-name-form-item > .el-form-item__label::before {
+  display: none !important;
+}
+
 .ui-button,
 .button {
   display: inline-flex;
@@ -74,22 +78,6 @@
   max-width: calc(100vw - 32px);
 }
 
-.home-top-actions > .el-dropdown {
-  display: contents;
-}
-
-.upload-home > .home-menu-source {
-  position: fixed !important;
-  top: -1000px !important;
-  left: -1000px !important;
-  width: 1px !important;
-  height: 1px !important;
-  overflow: hidden !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
-}
-
-.home-top-actions .more-button,
 .home-top-actions .upload-method-button,
 .home-top-actions .quick-toolbar-button,
 .home-top-actions .home-menu-action {
@@ -119,10 +107,43 @@
   margin: 0 !important;
 }
 
-.home-top-actions .more-button:hover,
+.text-language-icon {
+  position: relative;
+  display: block;
+  width: 21px;
+  height: 20px;
+  color: inherit;
+  font-family: ui-sans-serif, system-ui, sans-serif !important;
+  line-height: 1;
+}
+
+.text-language-icon-primary {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-size: 16px;
+  line-height: 16px;
+  font-weight: 700;
+}
+
+.text-language-icon-secondary {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  font-size: 10px;
+  line-height: 10px;
+  font-weight: 700;
+}
+
+.home-top-actions .home-menu-action,
+.language-switcher,
+.text-language-icon {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .home-top-actions .upload-method-button:hover,
-.home-top-actions .quick-toolbar-button:hover,
-.home-top-actions .home-menu-action:hover {
+.home-top-actions .quick-toolbar-button:hover {
   background: #fff !important;
   box-shadow: 0 3px 9px rgba(31, 61, 45, 0.2) !important;
   transform: translateY(-1px);
@@ -131,6 +152,17 @@
 .home-top-actions .quick-toolbar-icon,
 .home-top-actions .upload-method-icon {
   margin: 0;
+}
+
+.home-top-actions .home-history-button .quick-toolbar-icon,
+.home-top-actions .home-history-button svg,
+.home-top-actions .home-history-button i {
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  min-height: 24px !important;
+  font-size: 24px !important;
+  stroke-width: 2.2 !important;
 }
 
 .client-settings-backdrop {
@@ -159,8 +191,7 @@
   text-align: left;
 }
 
-.client-settings-header,
-.client-settings-footer {
+.client-settings-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -192,8 +223,36 @@
   font-weight: 700;
 }
 
+.client-settings-upload-settings > .client-settings-save {
+  display: flex !important;
+  margin: 16px 0 0 auto !important;
+}
+
+.client-settings-upload-settings .client-settings-save {
+  display: flex !important;
+  margin: 16px 0 0 auto !important;
+}
+
+.client-settings-section-save-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.client-settings-section-message {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  color: #246f4b;
+}
+
+.client-settings-section-message.is-error {
+  color: #c62828;
+}
+
 .client-settings-close,
-.client-settings-cancel,
 .client-settings-save {
   min-height: 40px;
   padding: 8px 16px;
@@ -235,6 +294,49 @@
 
 .client-settings-label {
   font-weight: 600;
+  text-align: left;
+}
+
+.admin-default-upload-channel-panel .client-settings-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 0;
+  row-gap: 0;
+  width: 100%;
+}
+
+.admin-default-upload-channel-panel .client-settings-field {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  min-height: 0;
+  padding: 16px;
+  border: 0;
+  background: transparent;
+}
+
+.admin-default-upload-channel-panel .client-settings-field:nth-child(odd) {
+  border-right: 1px solid rgba(100, 112, 132, 0.2);
+}
+
+.admin-default-upload-channel-panel .client-settings-field:nth-child(-n + 2) {
+  border-bottom: 1px solid rgba(100, 112, 132, 0.2);
+}
+
+.admin-default-upload-channel-panel .client-settings-field:first-child {
+  border-top: 0;
+}
+
+.admin-default-upload-channel-panel .client-settings-field .client-settings-checkbox,
+.admin-default-upload-channel-panel .client-settings-field .client-settings-toggle {
+  justify-self: start;
+}
+
+.admin-default-upload-channel-panel .client-settings-field .client-settings-input,
+.admin-default-upload-channel-panel .client-settings-field .client-settings-select {
+  width: 100%;
+  min-width: 0;
 }
 
 .client-settings-select,
@@ -301,25 +403,6 @@
   opacity: 0.55;
 }
 
-.client-settings-message {
-  min-height: 0;
-  margin: 0;
-  color: #246f4b;
-}
-
-.client-settings-message:not(:empty) {
-  margin: 12px 0 0;
-}
-
-.client-settings-message.is-error {
-  color: #c62828;
-}
-
-.client-settings-footer {
-  justify-content: flex-end;
-  margin-top: 12px;
-}
-
 .client-settings-save {
   border-color: #2f3338;
   color: #fff;
@@ -333,8 +416,7 @@
 }
 
 .upload-home .quick-toolbar,
-.upload-home .quick-toolbar-actions,
-.upload-home .mobile-more-dropdown {
+.upload-home .quick-toolbar-actions {
   display: none !important;
 }
 
@@ -346,7 +428,6 @@
   }
 
   .client-settings-close,
-  .client-settings-cancel,
   .client-settings-select,
   .client-settings-input {
     border-color: rgba(212, 231, 218, 0.2);
@@ -391,7 +472,6 @@ html.dark .client-settings-field:first-child {
 }
 
 html.dark .client-settings-close,
-html.dark .client-settings-cancel,
 html.dark .client-settings-select,
 html.dark .client-settings-input {
   border-color: rgba(212, 231, 218, 0.2);
@@ -434,24 +514,98 @@ html.dark .client-settings-save {
     grid-template-columns: 1fr;
     gap: 8px;
   }
+
+  .admin-default-upload-channel-panel .client-settings-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-default-upload-channel-panel .client-settings-field:nth-child(odd) {
+    border-right: 0;
+  }
+
+  .admin-default-upload-channel-panel .client-settings-field:not(:last-child) {
+    border-bottom: 1px solid rgba(100, 112, 132, 0.2);
+  }
 }
 
 @media (prefers-color-scheme: dark) {
-  .home-top-actions .more-button,
   .home-top-actions .upload-method-button,
-  .home-top-actions .quick-toolbar-button,
-  .home-top-actions .home-menu-action {
+  .home-top-actions .quick-toolbar-button {
     border-color: rgba(212, 231, 218, 0.2) !important;
     color: #a9d6ff !important;
     background: rgba(28, 37, 32, 0.88) !important;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
   }
 
-  .home-top-actions .more-button:hover,
   .home-top-actions .upload-method-button:hover,
-  .home-top-actions .quick-toolbar-button:hover,
-  .home-top-actions .home-menu-action:hover {
+  .home-top-actions .quick-toolbar-button:hover {
     background: #28362e !important;
+  }
+}
+
+.home-top-actions .home-menu-action {
+  box-sizing: border-box;
+  position: static !important;
+  display: inline-flex !important;
+  flex: 0 0 36px;
+  width: 36px !important;
+  height: 36px !important;
+  min-height: 36px;
+  margin: 0;
+  padding: 0 !important;
+  list-style: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #c8c8c0 !important;
+  border-radius: 8px !important;
+  color: #222 !important;
+  background: var(--UI-BUTTON-SECONDARY, #fff) !important;
+  box-shadow: none !important;
+  transition: background-color 0.14s ease, border-color 0.14s ease,
+    color 0.14s ease, outline-color 0.14s ease, transform 0.08s ease !important;
+}
+
+@media (hover: hover) {
+  .home-top-actions .home-menu-action:hover {
+    border-color: #8fba99 !important;
+    color: #285c37 !important;
+    background: #e5f2e8 !important;
+    transform: scale(1.025) !important;
+    box-shadow: 0 5px 12px rgba(23, 43, 77, 0.19) !important;
+  }
+}
+
+html.dark .home-top-actions .home-menu-action {
+  border-color: #77828e !important;
+  color: #f1f1f1 !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light):not(.dark) .home-top-actions .home-menu-action {
+    border-color: #77828e !important;
+    color: #f1f1f1 !important;
+  }
+}
+
+@media (hover: hover) {
+  html.dark .home-top-actions .home-menu-action:hover {
+    border-color: #86efac !important;
+    color: #10251a !important;
+    background: #a7f3d0 !important;
+    transform: scale(1.045) !important;
+    box-shadow: 0 0 0 3px rgba(167, 243, 208, 0.18),
+      0 6px 18px rgba(0, 0, 0, 0.45) !important;
+  }
+}
+
+@media (hover: hover) and (prefers-color-scheme: dark) {
+  :root:not(.light):not(.dark) .home-top-actions .home-menu-action:hover {
+    border-color: #86efac !important;
+    color: #10251a !important;
+    background: #a7f3d0 !important;
+    transform: scale(1.045) !important;
+    box-shadow: 0 0 0 3px rgba(167, 243, 208, 0.18),
+      0 6px 18px rgba(0, 0, 0, 0.45) !important;
   }
 }
 
@@ -462,15 +616,23 @@ html.dark .client-settings-save {
     gap: 6px;
   }
 
-  .home-top-actions .more-button,
   .home-top-actions .upload-method-button,
-  .home-top-actions .quick-toolbar-button,
-  .home-top-actions .home-menu-action {
+  .home-top-actions .quick-toolbar-button {
     flex-basis: 36px;
     width: 36px !important;
     height: 36px !important;
     min-height: 36px;
     border-radius: 10px !important;
+  }
+
+  .home-top-actions .home-history-button .quick-toolbar-icon,
+  .home-top-actions .home-history-button svg,
+  .home-top-actions .home-history-button i {
+    width: 26px !important;
+    height: 26px !important;
+    min-width: 26px !important;
+    min-height: 26px !important;
+    font-size: 26px !important;
   }
 }
 

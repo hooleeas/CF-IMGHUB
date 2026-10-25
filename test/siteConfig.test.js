@@ -9,6 +9,7 @@ function createKV(siteConfig) {
         values.set('MANAGE@SYSCONFIG@SITE', encodeSystemConfigValue(JSON.stringify(siteConfig)));
     }
     return {
+        values,
         async get(key) {
             return values.get(key) ?? null;
         },
@@ -22,9 +23,14 @@ function createKV(siteConfig) {
 }
 
 test('uses cf-imghub as the default site name', async () => {
-    assert.deepEqual(await getSiteConfig({ KV: createKV() }), {
+    const kv = createKV();
+    assert.deepEqual(await getSiteConfig({ KV: kv }), {
         adminPath: '/admin',
         siteName: 'cf-imghub',
+    });
+    assert.deepEqual(JSON.parse(kv.values.get('CONFIG')).SITE, {
+        NAME: 'cf-imghub',
+        ADMIN_PATH: 'admin',
     });
 });
 

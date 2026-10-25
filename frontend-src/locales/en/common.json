@@ -1,0 +1,20 @@
+{
+  "confirm": "OK",
+  "cancel": "Cancel",
+  "close": "Close",
+  "save": "Save",
+  "delete": "Delete",
+  "edit": "Edit",
+  "copy": "Copy",
+  "download": "Download",
+  "retry": "Retry",
+  "loading": "Loading...",
+  "success": "Success",
+  "failed": "Failed",
+  "warning": "Warning",
+  "info": "Notice",
+  "yes": "Yes",
+  "no": "No",
+  "all": "All Types",
+  "select": "Select"
+}

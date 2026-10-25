@@ -1,6 +1,6 @@
 import { createI18n } from 'vue-i18n'
-import zhCN from './zh-CN.json'
-import en from './en.json'
+import zhCN from './zh-CN.js'
+import en from './en.js'
 
 const LOCALE_KEY = 'app-locale'
 

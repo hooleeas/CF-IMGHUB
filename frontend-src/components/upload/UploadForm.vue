@@ -17,6 +17,7 @@ import { mapGetters } from 'vuex';
 import { buildFileUrls, updateFileListUrls, getUrlByFormat } from '@/utils/upload/urlBuilder';
 import { computeSha256 } from '@/utils/upload/sha256';
 import UploadFileItem from '@/components/upload/UploadFileItem.vue';
+import notifyToast from '@/utils/notifyToast';
 export default {
   name: 'UploadForm',
   components: {
@@ -88,11 +89,6 @@ export default {
       default: 'default',
       required: false
     },
-    uploadFolder: {
-      type: String,
-      default: '',
-      required: false
-    },
     convertToWebp: {
       type: Boolean,
       default: false,
@@ -110,8 +106,8 @@ export default {
       uploadCount: 0,
       pastedUrls: '',
       pasteUploadMethod: 'save',
-      // 失败文件自动重试相关
-      autoReUpload: true,
+      // 失败文件不自动重试，保留错误状态供用户处理。
+      autoReUpload: false,
       maxRetryCount: 10,
       // 最大重试次数
       retryTimer: null,
@@ -123,8 +119,9 @@ export default {
       // 等待上传的文件队列
       activeUploads: 0,
       // 当前正在上传的文件数
-      maxConcurrentUploads: 6,
-      // 最大并发上传数
+      maxConcurrentUploads: 1,
+      // 每次只上传一个文件
+      clipboardPasteBatch: null,
       // 取消上传控制
       abortControllers: new Map() // 存储每个文件的 AbortController
     };
@@ -233,7 +230,15 @@ export default {
     },
     uploadFile(file) {
       // 如果fileList中不存在该文件，说明已被删除，直接返回
-      if (!this.fileList.find(item => item.uid === file.file.uid)) {
+      const fileItem = this.fileList.find(item => item.uid === file.file.uid);
+      if (!fileItem) {
+        return;
+      }
+
+      const uploadChannel = fileItem.uploadChannel || this.uploadChannel;
+      if (uploadChannel !== 'external' && !this.channelName) {
+        fileItem.status = 'exception';
+        notifyToast('未选择渠道名称，请选择存储渠道后再上传。', 'error');
         return;
       }
 
@@ -249,8 +254,6 @@ export default {
       this.activeUploads++;
       const uploadingItem = this.fileList.find(item => item.uid === file.file.uid);
       if (uploadingItem) uploadingItem.status = 'uploading';
-      const fileItem = this.fileList.find(item => item.uid === file.file.uid);
-      const uploadChannel = fileItem?.uploadChannel || this.uploadChannel;
 
       // 如果上传渠道为外链，直接使用外链上传
       if (uploadChannel === 'external') {
@@ -350,7 +353,7 @@ export default {
         }
       }
       axios({
-        url: '/upload' + '?serverCompress=' + needServerCompress + '&uploadChannel=' + uploadChannel + (this.channelName ? '&channelName=' + encodeURIComponent(this.channelName) : '') + '&uploadNameType=' + uploadNameType + '&autoRetry=' + autoRetry + '&uploadFolder=' + encodeURIComponent(this.uploadFolder),
+        url: '/upload' + '?serverCompress=' + needServerCompress + '&uploadChannel=' + uploadChannel + (this.channelName ? '&channelName=' + encodeURIComponent(this.channelName) : '') + '&uploadNameType=' + uploadNameType + '&autoRetry=' + autoRetry,
         method: 'post',
         data: formData,
         withAuthCode: true,
@@ -428,7 +431,7 @@ export default {
         initFormData.append('originalFileType', fileType);
         initFormData.append('totalChunks', totalChunks.toString());
         const initResponse = await axios({
-          url: '/upload' + '?serverCompress=' + needServerCompress + '&uploadChannel=' + uploadChannel + (this.channelName ? '&channelName=' + encodeURIComponent(this.channelName) : '') + '&uploadNameType=' + uploadNameType + '&autoRetry=' + autoRetry + '&uploadFolder=' + encodeURIComponent(this.uploadFolder) + '&initChunked=true',
+          url: '/upload' + '?serverCompress=' + needServerCompress + '&uploadChannel=' + uploadChannel + (this.channelName ? '&channelName=' + encodeURIComponent(this.channelName) : '') + '&uploadNameType=' + uploadNameType + '&autoRetry=' + autoRetry + '&initChunked=true',
           method: 'post',
           data: initFormData,
           withAuthCode: true
@@ -472,7 +475,7 @@ export default {
             if (hasError || isCancelled) return;
             try {
               await axios({
-                url: '/upload' + '?serverCompress=' + needServerCompress + '&uploadChannel=' + uploadChannel + (this.channelName ? '&channelName=' + encodeURIComponent(this.channelName) : '') + '&uploadNameType=' + uploadNameType + '&autoRetry=' + autoRetry + '&uploadFolder=' + encodeURIComponent(this.uploadFolder) + '&chunked=true',
+                url: '/upload' + '?serverCompress=' + needServerCompress + '&uploadChannel=' + uploadChannel + (this.channelName ? '&channelName=' + encodeURIComponent(this.channelName) : '') + '&uploadNameType=' + uploadNameType + '&autoRetry=' + autoRetry + '&chunked=true',
                 method: 'post',
                 data: formData,
                 withAuthCode: true,
@@ -555,7 +558,7 @@ export default {
           mergeFormData.append('sha256', precomputedSha256);
         }
         const response = await axios({
-          url: '/upload' + '?serverCompress=' + needServerCompress + '&uploadChannel=' + uploadChannel + (this.channelName ? '&channelName=' + encodeURIComponent(this.channelName) : '') + '&uploadNameType=' + uploadNameType + '&autoRetry=' + autoRetry + '&uploadFolder=' + encodeURIComponent(this.uploadFolder) + '&chunked=true&merge=true',
+          url: '/upload' + '?serverCompress=' + needServerCompress + '&uploadChannel=' + uploadChannel + (this.channelName ? '&channelName=' + encodeURIComponent(this.channelName) : '') + '&uploadNameType=' + uploadNameType + '&autoRetry=' + autoRetry + '&chunked=true&merge=true',
           method: 'post',
           data: mergeFormData,
           withAuthCode: true
@@ -608,12 +611,9 @@ export default {
       this.uploadQueue = this.uploadQueue.filter(item => item.file.uid !== file.uid);
       // 从文件列表中移除
       this.fileList = this.fileList.filter(item => item.uid !== file.uid);
-      this.$message({
-        type: 'info',
-        message: this.$t('uploadForm.deleted', {
-          name: this.truncateFilename(file.name)
-        })
-      });
+      notifyToast(this.$t('uploadForm.deleted', {
+        name: this.truncateFilename(file.name)
+      }), 'success', 'check-circle');
     },
     // 清理上传资源
     async cleanupUploadResources(uploadId, totalChunks = 0) {
@@ -629,7 +629,7 @@ export default {
         console.warn('清理上传资源失败:', error);
       }
     },
-    handleSuccess(response, file) {
+    handleSuccess(response, file, options = {}) {
       const fileItem = this.fileList.find(item => item.uid === file.uid);
       if (!fileItem) return; // 文件已被删除
 
@@ -646,57 +646,92 @@ export default {
         }
         fileItem.progreess = 100;
         fileItem.status = 'success';
+        window.dispatchEvent(new CustomEvent('imgbed:upload-result', {
+          detail: {
+            imageUrl: fileItem.url,
+            url: getUrlByFormat(fileItem, 'url')
+          }
+        }));
+        this.handleCopy(fileItem, this.selectedUrlForm);
 
-        this.$message({
-          type: 'success',
-          message: this.$t('uploadForm.uploadSuccess', {
+        if (!options.silent) {
+          notifyToast(this.$t('uploadForm.uploadSuccess', {
             name: this.truncateFilename(file.name)
-          })
-        });
+          }), 'success', 'check-circle');
+        }
         setTimeout(() => {
           const item = this.fileList.find(item => item.uid === file.uid);
           if (item) item.status = 'done';
         }, 1000);
       } catch (error) {
-        this.$message.error(this.$t('uploadForm.uploadFailed', {
-          name: this.truncateFilename(file.name)
-        }));
+        if (!options.silent) {
+          notifyToast(this.$t('uploadForm.uploadFailed', {
+            name: this.truncateFilename(file.name)
+          }), 'error', 'circle-x');
+        }
         fileItem.status = 'exception';
       }
       // 注意：并发控制的 onUploadComplete 已在各上传方法的 finally 中调用
     },
-    handleError(err, file) {
+    handleError(err, file, options = {}) {
       const fileItem = this.fileList.find(item => item.uid === file.uid);
       if (!fileItem) return; // 文件已被删除
 
-      this.$message.error(this.$t('uploadForm.uploadFailed', {
+      const responseData = err?.response?.data;
+      const rawReason = typeof responseData === 'string'
+        ? responseData
+        : responseData?.error || responseData?.message || err?.message || '服务器未返回具体原因';
+      const reason = /<\/?(?:html|body|div|table)\b/i.test(rawReason)
+        ? `服务器返回异常页面（HTTP ${err?.response?.status || '错误'}），请检查服务配置。`
+        : rawReason;
+      const failureMessage = `${this.$t('uploadForm.uploadFailed', {
         name: this.truncateFilename(file.name)
-      }));
+      })}：${reason}`;
+      if (!options.silent) {
+        notifyToast(failureMessage, 'error', 'circle-x');
+      }
       fileItem.status = 'exception';
 
-      // 如果开启了自动重试，安排自动重试
-      if (this.autoReUpload) {
-        this.scheduleAutoRetry();
-      }
       // 注意：并发控制的 onUploadComplete 已在各上传方法的 finally 中调用
     },
-    handleCopy(file) {
-      const status = this.fileList.find(item => item.uid === file.uid).status;
+    async handleCopy(file, format = 'url') {
+      const status = this.fileList.find(item => item.uid === file.uid)?.status;
       if (status !== 'done' && status !== 'success') {
-        this.$message({
-          type: 'warning',
-          message: this.$t('uploadForm.fileNotUploaded')
-        });
+        notifyToast(this.$t('uploadForm.fileNotUploaded'), 'error', 'circle-x');
         return;
       }
-      navigator.clipboard.writeText(getUrlByFormat(file, this.selectedUrlForm));
-      this.$message({
-        type: 'success',
-        message: this.$t('uploadForm.copySuccess')
-      });
+      try {
+        await navigator.clipboard.writeText(getUrlByFormat(file, format));
+        notifyToast(this.$t('uploadForm.copySuccess'), 'success', 'check-check');
+      } catch (error) {
+        console.error('Failed to copy uploaded image link:', error);
+        notifyToast(this.$t('uploadForm.copyFailed'), 'error', 'circle-x');
+      }
     },
     beforeUpload(file) {
       return new Promise(async (resolve, reject) => {
+        try {
+          const response = await axios.get('/api/channels', { withAuthCode: true });
+          const hasConfiguredChannel = Object.values(response.data || {})
+            .some((channels) => Array.isArray(channels) && channels.length > 0);
+          if (!hasConfiguredChannel) {
+            const message = '暂无可用存储，请先在管理面板添加渠道。';
+            notifyToast(message, 'error');
+            reject(message);
+            return;
+          }
+          const selectedChannels = response.data?.[this.uploadChannel] || [];
+          if (this.channelName && !selectedChannels.some((channel) => channel.name === this.channelName)) {
+            const message = '未选择有效存储渠道名称，请重新选择后再上传。';
+            notifyToast(message, 'error');
+            reject(message);
+            return;
+          }
+        } catch (error) {
+          // Do not prevent an upload solely because the availability check failed.
+          console.warn('Failed to check configured upload channels:', error);
+        }
+
         let processedFile = file;
 
         // WebP 转换：在压缩之前进行
@@ -741,9 +776,9 @@ export default {
           imageConversion.compressAccurately(processedFile, 1024 * this.compressQuality).then(res => {
             //如果压缩后大于1024MB，且上传渠道为telegram，则不上传
             if (res.size / 1024 / 1024 > 1024 && this.uploadChannel === 'telegram') {
-              this.$message.error(this.$t('uploadForm.compressedFileTooLarge', {
+              notifyToast(this.$t('uploadForm.compressedFileTooLarge', {
                 name: processedFile.name
-              }));
+              }), 'error');
               reject(this.$t('uploadForm.fileSizeTooLarge'));
             }
             this.uploading = true;
@@ -765,9 +800,9 @@ export default {
               }, 300 * myUploadCount);
             }
           }).catch(err => {
-            this.$message.error(this.$t('uploadForm.compressFailedCannotUpload', {
+            notifyToast(this.$t('uploadForm.compressFailedCannotUpload', {
               name: processedFile.name
-            }));
+            }), 'error');
             reject(err);
           });
         } else if (isLtLim) {
@@ -785,9 +820,9 @@ export default {
             }, 300 * myUploadCount);
           }
         } else {
-          this.$message.error(this.$t('uploadForm.fileTooLarge', {
+          notifyToast(this.$t('uploadForm.fileTooLarge', {
             name: processedFile.name
-          }));
+          }), 'error');
           reject(this.$t('uploadForm.fileSizeTooLarge'));
         }
       });
@@ -798,58 +833,68 @@ export default {
         fileItem.progreess = event.percent;
       }
     },
-    copyAll() {
-      const urls = this.fileList.filter(item => item.status === 'done' || item.status === 'success').map(item => getUrlByFormat(item, this.selectedUrlForm)).join('\n');
-      navigator.clipboard.writeText(urls);
-      this.$message({
-        type: 'success',
-        message: this.$t('uploadForm.copyAllSuccess')
-      });
-    },
-    clearFileList() {
-      if (this.fileList.length > 0) {
-        // 取消所有正在上传的文件
-        this.abortControllers.forEach((controller, uid) => {
-          controller.abort();
-        });
-        this.abortControllers.clear();
-        // 清空上传队列
-        this.uploadQueue = [];
-        // 清空文件列表
-        this.fileList = [];
-        this.$message({
-          type: 'success',
-          message: this.$t('uploadForm.fileListCleared')
-        });
-      } else {
-        this.$message({
-          type: 'info',
-          message: this.$t('uploadForm.fileListEmpty')
-        });
-      }
-    },
-    clearSuccessList() {
-      if (this.uploadSuccessCount > 0) {
-        this.fileList = this.fileList.filter(item => item.status !== 'done' && item.status !== 'success');
-        this.$message({
-          type: 'success',
-          message: this.$t('uploadForm.successFilesCleared')
-        });
-      } else {
-        this.$message({
-          type: 'info',
-          message: this.$t('uploadForm.successFilesEmpty')
-        });
-      }
-    },
     handlePaste(event) {
       // 当粘贴位置是文本框时，不执行该操作
       if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
         return;
       }
-      const items = event.clipboardData.items;
-      if (items.length > 0) {
-        this.uploadFromUrl(items);
+      const items = event.clipboardData?.items;
+      if (items?.length > 0) {
+        const imageCount = Array.from(items).filter(item => {
+          return item.kind === 'file' && item.type.startsWith('image/') && item.getAsFile();
+        }).length;
+        if (imageCount === 0) {
+          this.uploadFromUrl(items);
+          return;
+        }
+        const batch = {
+          total: imageCount,
+          completed: 0,
+          failed: false,
+          failureMessage: '',
+          failureIcon: ''
+        };
+        this.clipboardPasteBatch = batch;
+        notifyToast(
+          imageCount > 1
+            ? this.$t('uploadForm.pasteUploadingProgress', { current: 1, total: imageCount })
+            : this.$t('uploadForm.pasteUploading'),
+          'success',
+          'loader-circle'
+        );
+        this.uploadFromUrl(items, batch);
+      }
+    },
+    finishClipboardUpload(batch, success, error = null) {
+      if (!batch || batch.completed >= batch.total) return;
+      if (!success) {
+        batch.failed = true;
+        const reason = String(error?.message || error || '');
+        if (/too large|file size|文件过大|超出大小/i.test(reason)) {
+          batch.failureMessage = this.$t('uploadForm.pasteFileTooLarge');
+          batch.failureIcon = 'file-warning';
+        } else if (/unsupported|not supported|format|格式不支持/i.test(reason)) {
+          batch.failureMessage = this.$t('uploadForm.pasteUnsupportedFormat');
+          batch.failureIcon = 'file-warning';
+        }
+      }
+      batch.completed += 1;
+      if (batch.completed < batch.total) {
+        notifyToast(
+          this.$t('uploadForm.pasteUploadingProgress', {
+            current: batch.completed + 1,
+            total: batch.total
+          }),
+          'success',
+          'loader-circle'
+        );
+        return;
+      }
+      if (this.clipboardPasteBatch === batch) this.clipboardPasteBatch = null;
+      if (batch.failed) {
+        notifyToast(batch.failureMessage || this.$t('uploadForm.pasteUploadFailed'), 'error', batch.failureIcon || 'circle-x');
+      } else {
+        notifyToast(this.$t('uploadForm.pasteUploadSuccess'), 'success', 'check-circle');
       }
     },
     handleUploadPasteUrls() {
@@ -908,10 +953,18 @@ export default {
         }
       }
     },
-    uploadFromUrl(items) {
+    uploadFromUrl(items, clipboardBatch = null) {
       for (let i = 0; i < items.length; i++) {
         if (items[i].kind === 'file') {
           const file = items[i].getAsFile();
+          if (!file) continue;
+          const isClipboardImage = clipboardBatch && file.type.startsWith('image/');
+          let clipboardItemFinished = false;
+          const finishClipboardItem = (success, error = null) => {
+            if (!isClipboardImage || clipboardItemFinished) return;
+            clipboardItemFinished = true;
+            this.finishClipboardUpload(clipboardBatch, success, error);
+          };
           // 允许上传任意类型的文件
           file.uid = Date.now() + i;
           //接收beforeUpload的Promise对象
@@ -922,13 +975,29 @@ export default {
                 this.uploadFile({
                   file: newFile,
                   onProgress: evt => this.handleProgress(evt),
-                  onSuccess: (response, file) => this.handleSuccess(response, file),
-                  onError: (error, file) => this.handleError(error, file)
+                  onSuccess: (response, file) => {
+                    this.handleSuccess(response, file, { silent: Boolean(isClipboardImage) });
+                    const uploadedFile = this.fileList.find(item => item.uid === file.uid);
+                    finishClipboardItem(uploadedFile?.status === 'done' || uploadedFile?.status === 'success');
+                  },
+                  onError: (error, file) => {
+                    this.handleError(error, file, { silent: Boolean(isClipboardImage) });
+                    finishClipboardItem(false, error);
+                  }
                 });
+                const uploadItem = this.fileList.find(item => item.uid === newFile.uid);
+                if (uploadItem?.status === 'exception') {
+                  finishClipboardItem(false);
+                }
+              } else {
+                finishClipboardItem(false);
               }
             }).catch(err => {
+              finishClipboardItem(false, err);
               console.log(err);
             });
+          } else {
+            finishClipboardItem(false);
           }
         } else if (items[i].kind === 'string') {
           items[i].getAsString(text => {
@@ -1127,8 +1196,7 @@ export default {
             fileSample,
             channelName: this.channelName,
             // 传递指定的渠道名称
-            uploadNameType: this.uploadNameType,
-            uploadFolder: this.uploadFolder
+            uploadNameType: this.uploadNameType
           },
           withAuthCode: true,
           signal: abortController.signal

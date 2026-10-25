@@ -8,7 +8,9 @@ let disableTelemetry = false;
 export async function errorHandling(context) {
   // 读取KV中的设置
   const othersConfig = await fetchOthersConfig(context.env);
-  disableTelemetry = !othersConfig.telemetry.enabled;
+  // Telemetry settings have been retired and may be absent in existing KV data.
+  // Treat a missing setting as disabled instead of failing unrelated requests.
+  disableTelemetry = !othersConfig.telemetry?.enabled;
 
   const env = context.env;
   if (!disableTelemetry) {
@@ -34,7 +36,7 @@ export async function errorHandling(context) {
 export async function telemetryData(context) {
   // 读取KV中的设置
   const othersConfig = await fetchOthersConfig(context.env);
-  disableTelemetry = !othersConfig.telemetry.enabled;
+  disableTelemetry = !othersConfig.telemetry?.enabled;
   
   if (!disableTelemetry) {
     try {

@@ -4,15 +4,6 @@ export default {
   components: {
     ChannelIcon
   },
-  methods: {
-    handleUploadFolderInput(val) {
-      // 自动补全前导 /
-      if (val && !val.startsWith('/')) {
-        val = '/' + val;
-      }
-      this.$emit('update:uploadFolder', val);
-    }
-  },
   props: {
     modelValue: {
       type: Boolean,
@@ -29,10 +20,6 @@ export default {
     currentChannelList: {
       type: Array,
       default: () => []
-    },
-    uploadFolder: {
-      type: String,
-      default: ''
     },
     autoRetry: {
       type: Boolean,
@@ -63,7 +50,7 @@ export default {
       default: true
     }
   },
-  emits: ['update:modelValue', 'update:uploadChannel', 'update:channelName', 'update:uploadFolder', 'update:autoRetry', 'update:uploadNameType', 'update:convertToWebp', 'update:customerCompress', 'update:compressBar', 'update:compressQuality', 'update:serverCompress'],
+  emits: ['update:modelValue', 'update:uploadChannel', 'update:channelName', 'update:autoRetry', 'update:uploadNameType', 'update:convertToWebp', 'update:customerCompress', 'update:compressBar', 'update:compressQuality', 'update:serverCompress'],
   computed: {
     visible: {
       get() {

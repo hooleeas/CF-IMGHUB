@@ -1,0 +1,15 @@
+{
+  "uploadFileList": "Upload File List",
+  "fileNameCol": "File Name",
+  "filePreview": "File Preview",
+  "uploadTimeCol": "Upload Time",
+  "ipAddress": "IP Address",
+  "address": "Address",
+  "uploadCount": "Upload Count",
+  "allowUpload": "Allow Upload",
+  "allow": "Allow",
+  "deny": "Deny",
+  "loadMore": "Load More",
+  "loadError": "Error loading more data, please check network connection",
+  "syncError": "Error syncing data, please check network connection"
+}

@@ -1,0 +1,8 @@
+{
+  "pathMustStartWithSlash": "Path must start with \"/\"",
+  "pathTraversalNotAllowed": "Path cannot contain \"..\"",
+  "singleDotNotAllowed": "Path cannot contain standalone \".\"",
+  "consecutiveSlashNotAllowed": "Path cannot contain consecutive slashes",
+  "invalidCharacters": "Path contains invalid characters, please use a valid path format",
+  "uploadDirReplace": "Upload directory"
+}

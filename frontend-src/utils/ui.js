@@ -15,8 +15,8 @@ export const CONTAINER = (SLOTS, CLASS_NAME = '') => ({
   SLOTS,
 });
 
-export const CC = (MESSAGE, TYPE = 'success') => {
-  window.dispatchEvent(new CustomEvent('imgbed:toast', { detail: { MESSAGE, TYPE } }));
+export const CC = (MESSAGE, TYPE = 'success', ICON = '') => {
+  window.dispatchEvent(new CustomEvent('imgbed:toast', { detail: { MESSAGE, TYPE, ICON } }));
 };
 
 export const OPEN_MODAL = (TITLE, CONTENT) => {

@@ -1,0 +1,8 @@
+{
+  "pathMustStartWithSlash": "目标目录必须以 \"/\" 开头",
+  "pathTraversalNotAllowed": "目标目录不能包含路径穿越字符 \"..\"",
+  "singleDotNotAllowed": "目标目录不能包含单独的 \".\" 路径段",
+  "consecutiveSlashNotAllowed": "目标目录不能包含连续的斜杠",
+  "invalidCharacters": "目标目录包含非法字符，请使用合法的路径格式",
+  "uploadDirReplace": "上传目录"
+}

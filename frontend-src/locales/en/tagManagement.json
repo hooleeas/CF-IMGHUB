@@ -1,0 +1,16 @@
+{
+  "title": "Tag Management",
+  "inputPlaceholder": "Enter tag name",
+  "currentTags": "Current Tags",
+  "noTags": "No tags",
+  "popularTags": "Popular Tags",
+  "loading": "Loading...",
+  "noPopularTags": "No popular tags",
+  "close": "Close",
+  "tagExists": "Tag already exists",
+  "addSuccess": "Tag added successfully",
+  "addFailed": "Failed to add tag",
+  "removeSuccess": "Tag removed successfully",
+  "removeFailed": "Failed to remove tag",
+  "loadFailed": "Failed to load tags"
+}

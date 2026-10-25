@@ -1,0 +1,12 @@
+{
+  "linkFormatTitle": "链接格式设置",
+  "defaultCopyLink": "默认复制链接",
+  "rawLink": "原始链接",
+  "customLink": "自定义链接",
+  "customLinkTooltip": "默认链接为https://your.domain/file/xxx.jpg <br> 如果启用自定义链接格式，只保留xxx.jpg部分，其他部分请自行输入",
+  "enableCustom": "启用自定义",
+  "customPrefix": "自定义前缀",
+  "customPrefixPlaceholder": "请输入自定义链接前缀",
+  "confirm": "确定",
+  "s3Link": "S3链接"
+}

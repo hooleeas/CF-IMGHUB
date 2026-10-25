@@ -10,8 +10,8 @@ export async function getSecurityConfig(db, env) {
     auth: {
       user: { authCode: auth.user?.authCode ?? env.AUTH_CODE ?? '' },
       admin: {
-        adminUsername: auth.admin?.adminUsername ?? env.BASIC_USER ?? '',
-        adminPassword: auth.admin?.adminPassword ?? env.BASIC_PASS ?? '',
+        adminUsername: auth.admin?.adminUsername || env.BASIC_USER || '',
+        adminPassword: auth.admin?.adminPassword || env.BASIC_PASS || '',
       },
     },
     access: {

@@ -37,12 +37,20 @@ export async function onRequestPost(context) {
         }
 
         const body = await request.json();
-        const { fileSize, fileName, fileType, sha256, fileSample, channelName, uploadNameType, uploadFolder } = body;
+        const { fileSize, fileName, fileType, sha256, fileSample, channelName, uploadNameType } = body;
         const normalizedFileType = fileType || 'application/octet-stream';
 
         if (!fileSize || !fileName || !sha256 || !fileSample) {
             return createResponse(JSON.stringify({
                 error: 'Missing required fields: fileSize, fileName, sha256, fileSample'
+            }), {
+                status: 400,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
+        if (!channelName) {
+            return createResponse(JSON.stringify({
+                error: '未选择渠道名称，请选择存储渠道后再上传。'
             }), {
                 status: 400,
                 headers: { 'Content-Type': 'application/json' }
@@ -60,15 +68,15 @@ export async function onRequestPost(context) {
             });
         }
 
-        // 选择渠道
-        let hfChannel;
-        if (channelName) {
-            hfChannel = hfSettings.channels.find(c => c.name === channelName);
-        }
+        // 选择明确指定的渠道，不在名称缺失或无效时回退到其他渠道
+        const hfChannel = hfSettings.channels.find(c => c.name === channelName);
         if (!hfChannel) {
-            hfChannel = hfSettings.loadBalance?.enabled
-                ? hfSettings.channels[Math.floor(Math.random() * hfSettings.channels.length)]
-                : hfSettings.channels[0];
+            return createResponse(JSON.stringify({
+                error: '所选渠道名称无效，请重新选择后再上传。'
+            }), {
+                status: 400,
+                headers: { 'Content-Type': 'application/json' }
+            });
         }
 
         if (!hfChannel || !hfChannel.token || !hfChannel.repo) {
@@ -82,10 +90,6 @@ export async function onRequestPost(context) {
         if (uploadNameType) {
             url.searchParams.set('uploadNameType', uploadNameType);
         }
-        if (uploadFolder) {
-            url.searchParams.set('uploadFolder', uploadFolder);
-        }
-
         // 使用统一的文件命名函数生成文件ID
         const fullId = await buildUniqueFileId(context, fileName, normalizedFileType);
 

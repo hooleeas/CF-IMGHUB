@@ -26,10 +26,6 @@ export default {
         icon: 'shield',
         titleKey: 'sysConfigTabs.securitySettings'
       }, {
-        index: 'page',
-        icon: 'pager',
-        titleKey: 'sysConfigTabs.pageSettings'
-      }, {
         index: 'others',
         icon: 'cog',
         titleKey: 'sysConfigTabs.otherSettings'

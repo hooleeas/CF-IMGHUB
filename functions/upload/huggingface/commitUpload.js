@@ -32,6 +32,14 @@ export async function onRequestPost(context) {
                 headers: { 'Content-Type': 'application/json' }
             });
         }
+        if (!channelName) {
+            return createResponse(JSON.stringify({
+                error: '未选择渠道名称，请选择存储渠道后再上传。'
+            }), {
+                status: 400,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
 
         // 路径安全处理：使用统一的路径安全函数
         const sanitizedFullId = sanitizeUploadFolder(fullId);
@@ -55,13 +63,15 @@ export async function onRequestPost(context) {
             });
         }
 
-        // 选择渠道
-        let hfChannel;
-        if (channelName) {
-            hfChannel = hfSettings.channels.find(c => c.name === channelName);
-        }
+        // 选择明确指定的渠道，不在名称缺失或无效时回退到其他渠道
+        const hfChannel = hfSettings.channels.find(c => c.name === channelName);
         if (!hfChannel) {
-            hfChannel = hfSettings.channels[0];
+            return createResponse(JSON.stringify({
+                error: '所选渠道名称无效，请重新选择后再上传。'
+            }), {
+                status: 400,
+                headers: { 'Content-Type': 'application/json' }
+            });
         }
 
         if (!hfChannel || !hfChannel.token || !hfChannel.repo) {

@@ -1,0 +1,16 @@
+{
+  "title": "标签管理",
+  "inputPlaceholder": "输入标签名称",
+  "currentTags": "当前标签",
+  "noTags": "暂无标签",
+  "popularTags": "常用标签",
+  "loading": "加载中...",
+  "noPopularTags": "暂无常用标签",
+  "close": "关闭",
+  "tagExists": "标签已存在",
+  "addSuccess": "标签添加成功",
+  "addFailed": "添加标签失败",
+  "removeSuccess": "标签删除成功",
+  "removeFailed": "删除标签失败",
+  "loadFailed": "加载标签失败"
+}

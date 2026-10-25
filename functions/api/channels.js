@@ -40,26 +40,32 @@ export async function onRequest(context) {
         // 构建渠道列表，返回渠道名称和实际的 Channel 类型
         const channels = {
             telegram: uploadConfig.telegram.channels.map(ch => ({
+                id: ch.id,
                 name: ch.name,
                 type: 'TelegramNew'
             })),
             cfr2: uploadConfig.cfr2.channels.map(ch => ({
+                id: ch.id,
                 name: ch.name,
                 type: 'CloudflareR2'
             })),
             s3: uploadConfig.s3.channels.map(ch => ({
+                id: ch.id,
                 name: ch.name,
                 type: 'S3'
             })),
             discord: uploadConfig.discord.channels.map(ch => ({
+                id: ch.id,
                 name: ch.name,
                 type: 'Discord'
             })),
             huggingface: uploadConfig.huggingface.channels.map(ch => ({
+                id: ch.id,
                 name: ch.name,
                 type: 'HuggingFace'
             })),
             webdav: uploadConfig.webdav.channels.map(ch => ({
+                id: ch.id,
                 name: ch.name,
                 type: 'WebDAV'
             }))

@@ -1,4 +1,6 @@
 import { removeDefaultMetadata } from '../../../utils/metadata/defaultMetadata.js';
+import { createDatabaseAdapter } from '../../../utils/databaseAdapter.js';
+import { rebuildIndex } from '../../../utils/indexManager.js';
 
 const MAX_IMPORT_BYTES = 20 * 1024 * 1024;
 const MAX_IMPORT_ENTRIES = 10_000;
@@ -39,7 +41,9 @@ async function listEntries(kv, cursor) {
         limit: PAGE_SIZE,
         ...(cursor ? { cursor } : {}),
     });
-    const entries = result.keys.map(({ name }) => ({ name }));
+    const entries = result.keys
+        .filter(({ name }) => name !== 'IMGS')
+        .map(({ name }) => ({ name }));
     entries.sort((left, right) => left.name.localeCompare(right.name));
 
     return {
@@ -105,6 +109,12 @@ async function importEntries(kv, payload) {
     const encoder = new TextEncoder();
     const validated = [];
     for (const [key, value] of entries) {
+        if (key === 'IMGS') {
+            return jsonResponse({
+                ok: false,
+                error: '备份包含已弃用的 IMGS 索引键，请移除该键后重新导入。',
+            }, 400);
+        }
         if (!key || encoder.encode(key).byteLength > 512 || /[\u0000-\u001f\u007f]/.test(key)) {
             return jsonResponse({ ok: false, error: `KV 键名无效或超过 512 字节：${key.slice(0, 80)}` }, 400);
         }
@@ -179,6 +189,31 @@ async function cleanDefaultMetadata(kv, confirmation) {
                 ...(cursor ? { cursor } : {}),
             });
             for (const { name } of result.keys) {
+                if (name.startsWith('IMG_')) {
+                    const value = await kv.get(name);
+                    if (value === null) continue;
+                    const imageRecord = JSON.parse(value);
+                    if (!imageRecord || typeof imageRecord !== 'object' || Array.isArray(imageRecord)) continue;
+
+                    const imageMetadata = {
+                        UploadAddress: imageRecord.UPLOAD_ADDRESS,
+                        ListType: imageRecord.LIST_TYPE,
+                        Label: imageRecord.LABEL,
+                        Directory: imageRecord.DIRECTORY,
+                        Tags: imageRecord.TAGS,
+                    };
+                    const cleaned = removeDefaultMetadata(imageMetadata);
+                    if (cleaned.removedFields.length === 0) continue;
+                    for (const field of cleaned.removedFields) {
+                        const storedField = field.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase();
+                        delete imageRecord[storedField];
+                        removedFields[field] = (removedFields[field] || 0) + 1;
+                    }
+                    await kv.put(name, JSON.stringify(imageRecord));
+                    updatedEntries++;
+                    continue;
+                }
+
                 if (name === 'manage@index@meta') {
                     const value = await kv.get(name);
                     if (value === null) continue;
@@ -250,6 +285,59 @@ async function cleanDefaultMetadata(kv, confirmation) {
     return jsonResponse({ ok: true, updatedEntries, removedFields });
 }
 
+async function migrateLegacyStorage(env, confirmation) {
+    if (confirmation !== 'MIGRATE_LEGACY_IMAGES') {
+        return jsonResponse({ ok: false, error: '确认文本无效。' }, 400);
+    }
+    if (!env.KV || typeof env.KV.list !== 'function' || typeof env.KV.getWithMetadata !== 'function') {
+        return jsonResponse({ ok: false, error: '当前 KV 不支持迁移旧图片记录。' }, 501);
+    }
+
+    const db = createDatabaseAdapter(env);
+    const images = await db.migrateLegacyImages();
+    const hadLegacyIndex = await env.KV.get('IMGS') !== null;
+
+    let rebuiltIndex = null;
+    let indexRebuildError = null;
+    if (images.failed === 0) {
+        const pendingTasks = [];
+        rebuiltIndex = await rebuildIndex({
+            env,
+            waitUntil: (task) => pendingTasks.push(Promise.resolve(task)),
+        });
+        await Promise.all(pendingTasks);
+        if (!rebuiltIndex.success) {
+            indexRebuildError = rebuiltIndex.error || '图片索引重建失败。';
+        } else {
+            let cursor;
+            let remainingIndexKeys = 0;
+            do {
+                const page = await env.KV.list({
+                    prefix: 'manage@index',
+                    limit: PAGE_SIZE,
+                    ...(cursor ? { cursor } : {}),
+                });
+                remainingIndexKeys += page.keys.length;
+                cursor = page.list_complete ? null : page.cursor || null;
+            } while (cursor);
+            rebuiltIndex.remainingIndexKeys = remainingIndexKeys;
+            if (remainingIndexKeys > 0 || await env.KV.get('IMGS') !== null) {
+                indexRebuildError = '旧索引 KV 记录未能全部删除。';
+            }
+        }
+    }
+
+    const legacyIndexMigrated = hadLegacyIndex && await env.KV.get('IMGS') === null;
+    const ok = images.failed === 0 && !indexRebuildError;
+    return jsonResponse({
+        ok,
+        images,
+        legacyIndexMigrated,
+        ...(rebuiltIndex ? { rebuiltIndex } : {}),
+        ...(indexRebuildError ? { indexRebuildError } : {}),
+    }, ok ? 200 : 500);
+}
+
 export async function onRequestGet({ request, env }) {
     try {
         const url = new URL(request.url);
@@ -283,6 +371,9 @@ export async function onRequestPost({ request, env }) {
         }
         if (result.data?.type === 'clean_default_metadata') {
             return await cleanDefaultMetadata(kv, result.data.confirmation);
+        }
+        if (result.data?.type === 'migrate_legacy_storage') {
+            return await migrateLegacyStorage(env, result.data.confirmation);
         }
         if (result.data?.type !== 'import_all_json') {
             return jsonResponse({ ok: false, error: '不支持的操作类型。' }, 400);

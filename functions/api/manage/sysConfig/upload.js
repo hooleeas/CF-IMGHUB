@@ -1,6 +1,100 @@
 import { getDatabase } from '../../../utils/databaseAdapter.js';
 import { normalizeWebDAVHeaders } from '../../../utils/storage/webdavAPI.js';
 
+const UPLOAD_CHANNEL_TYPES = ['telegram', 'cfr2', 's3', 'discord', 'huggingface', 'webdav'];
+const CHANNEL_TYPE_NAMES = {
+    telegram: 'Telegram',
+    cfr2: 'R2',
+    s3: 'S3',
+    discord: 'Discord',
+    huggingface: 'HuggingFace',
+    webdav: 'WebDAV',
+};
+
+function createChannelId(usedIds) {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+        const bytes = new Uint8Array(5);
+        globalThis.crypto.getRandomValues(bytes);
+        const id = [...bytes].map((byte) => alphabet[byte % alphabet.length]).join('');
+        if (!usedIds.has(id)) {
+            usedIds.add(id);
+            return id;
+        }
+    }
+    throw new Error('无法生成唯一的渠道 ID。');
+}
+
+function toApiChannel(channel, channelType) {
+    const apiChannel = { ...channel, type: channelType };
+    if (channelType === 'webdav' && apiChannel.baseUrl === undefined && apiChannel.url !== undefined) {
+        apiChannel.baseUrl = apiChannel.url;
+        delete apiChannel.url;
+    }
+    return apiChannel;
+}
+
+function stripEnvironmentChannels(settings) {
+    const persistedSettings = {};
+    const usedIds = new Set(['TGAAA', 'R2AAA', 'S3AAA', 'DCAAA', 'HFAAA', 'WDAAA']);
+    let hasR2Channel = false;
+
+    for (const channelType of UPLOAD_CHANNEL_TYPES) {
+        const channelSettings = settings[channelType];
+        if (!channelSettings || typeof channelSettings !== 'object') continue;
+
+        const channels = (Array.isArray(channelSettings.channels) ? channelSettings.channels : [])
+            .filter((channel) => {
+            const isEnvironmentChannel = channel?.fixed === true
+                || (channel?.savePath ?? channel?.savepath) === 'environment variable';
+            if (channelType !== 'cfr2') return !isEnvironmentChannel;
+            if (isEnvironmentChannel || channel?.id === 'R2A' || hasR2Channel) return false;
+            hasR2Channel = true;
+            return true;
+        }).map((channel) => {
+            const persistedChannel = { ...channel };
+            let id = typeof persistedChannel.id === 'string'
+                && /^[A-Z]{5}$/.test(persistedChannel.id)
+                && !usedIds.has(persistedChannel.id)
+                ? persistedChannel.id
+                : '';
+            if (id) usedIds.add(id);
+            else id = createChannelId(usedIds);
+            persistedChannel.id = id;
+            persistedChannel.type = CHANNEL_TYPE_NAMES[channelType];
+            persistedChannel.enabled = channel.enabled !== false;
+            delete persistedChannel.fixed;
+            delete persistedChannel.savePath;
+            delete persistedChannel.savepath;
+            if (channelType === 'webdav' && persistedChannel.url === undefined
+                && persistedChannel.baseUrl !== undefined) {
+                persistedChannel.url = persistedChannel.baseUrl;
+                delete persistedChannel.baseUrl;
+            }
+            if (['cfr2', 's3', 'webdav'].includes(channelType)) {
+                delete persistedChannel.quota;
+            }
+            return persistedChannel;
+        });
+
+        const loadBalance = channelSettings.loadBalance;
+        const hasLoadBalanceSettings = loadBalance
+            && (loadBalance.enabled === true
+                || (Array.isArray(loadBalance.channels) && loadBalance.channels.length > 0));
+        const normalizedTypeSettings = {};
+        if (channels.length > 0) normalizedTypeSettings.channels = channels;
+        if (hasLoadBalanceSettings) normalizedTypeSettings.loadBalance = loadBalance;
+        if (Object.keys(normalizedTypeSettings).length > 0) {
+            persistedSettings[channelType] = normalizedTypeSettings;
+        }
+    }
+
+    return {
+        settings: persistedSettings,
+        changed: JSON.stringify(settings) !== JSON.stringify(persistedSettings),
+    };
+}
+
 export async function onRequest(context) {
     // 上传设置相关，GET方法读取设置，POST方法保存设置
     const {
@@ -28,10 +122,13 @@ export async function onRequest(context) {
     // POST保存设置
     if (request.method === 'POST') {
         const body = await request.json()
-        const settings = body
+        const { settings } = stripEnvironmentChannels(body || {});
 
-        // 写入数据库
-        await db.put('manage@sysConfig@upload', JSON.stringify(settings))
+        if (Object.keys(settings).length === 0) {
+            await db.delete('manage@sysConfig@upload')
+        } else {
+            await db.put('manage@sysConfig@upload', JSON.stringify(settings))
+        }
 
         return new Response(JSON.stringify(settings), {
             headers: {
@@ -46,7 +143,15 @@ export async function getUploadConfig(db, env) {
     const settings = {}
     // 读取数据库中的设置
     const settingsStr = await db.get('manage@sysConfig@upload')
-    const settingsKV = settingsStr ? JSON.parse(settingsStr) : {}
+    const storedSettings = settingsStr ? JSON.parse(settingsStr) : {}
+    const { settings: settingsKV } = stripEnvironmentChannels(storedSettings);
+    if (JSON.stringify(storedSettings) !== JSON.stringify(settingsKV)) {
+        if (Object.keys(settingsKV).length === 0) {
+            await db.delete('manage@sysConfig@upload')
+        } else {
+            await db.put('manage@sysConfig@upload', JSON.stringify(settingsKV))
+        }
+    }
 
     // =====================读取tg渠道配置=====================
     const telegram = {}
@@ -55,7 +160,7 @@ export async function getUploadConfig(db, env) {
     telegram.channels = telegramChannels
     if (env.TG_BOT_TOKEN) {
         telegramChannels.push({
-            id: 1,
+            id: 'TGAAA',
             name: 'Telegram_env',
             type: 'telegram',
             savePath: 'environment variable',
@@ -66,7 +171,8 @@ export async function getUploadConfig(db, env) {
             fixed: true,
         })
     }
-    for (const tg of settingsKV.telegram?.channels || []) {
+    for (const storedTg of settingsKV.telegram?.channels || []) {
+        const tg = toApiChannel(storedTg, 'telegram');
         // 如果savePath是environment variable，修改可变参数
         if (tg.savePath === 'environment variable') {
             // 如果环境变量未删除，进行覆盖操作
@@ -77,8 +183,6 @@ export async function getUploadConfig(db, env) {
 
             continue
         }
-        // id自增
-        tg.id = telegramChannels.length + 1
         telegramChannels.push(tg)
     }
 
@@ -95,31 +199,8 @@ export async function getUploadConfig(db, env) {
     const cfr2 = {}
     const cfr2Channels = []
     cfr2.channels = cfr2Channels
-    if (env.R2) {
-        cfr2Channels.push({
-            id: 1,
-            name: 'R2_env',
-            type: 'cfr2',
-            savePath: 'environment variable',
-            publicUrl: env.R2_PUBLIC_URL,
-            enabled: true,
-            fixed: true,
-        })
-    }
-    for (const r2 of settingsKV.cfr2?.channels || []) {
-        // 如果savePath是environment variable，修改可变参数
-        if (r2.savePath === 'environment variable') {
-            // 如果环境变量未删除，进行覆盖操作
-            if (cfr2Channels[0]) {
-                cfr2Channels[0].publicUrl = r2.publicUrl
-                cfr2Channels[0].enabled = r2.enabled
-                cfr2Channels[0].quota = r2.quota  // 保留容量限制配置
-            }
-
-            continue
-        }
-        // id自增
-        r2.id = cfr2Channels.length + 1
+    for (const storedR2 of settingsKV.cfr2?.channels || []) {
+        const r2 = toApiChannel(storedR2, 'cfr2');
         cfr2Channels.push(r2)
     }
 
@@ -137,7 +218,7 @@ export async function getUploadConfig(db, env) {
     s3.channels = s3Channels
     if (env.S3_ACCESS_KEY_ID) {
         s3Channels.push({
-            id: 1,
+            id: 'S3AAA',
             name: 'S3_env',
             type: 's3',
             savePath: 'environment variable',
@@ -152,20 +233,18 @@ export async function getUploadConfig(db, env) {
             fixed: true,
         })
     }
-    for (const s of settingsKV.s3?.channels || []) {
+    for (const storedS3 of settingsKV.s3?.channels || []) {
+        const s = toApiChannel(storedS3, 's3');
         // 如果savePath是environment variable，修改可变参数
         if (s.savePath === 'environment variable') {
             // 如果环境变量未删除，进行覆盖操作
             if (s3Channels[0]) {
                 s3Channels[0].enabled = s.enabled
-                s3Channels[0].quota = s.quota  // 保留容量限制配置
                 s3Channels[0].cdnDomain = s.cdnDomain  // 保留 CDN 域名配置
             }
 
             continue
         }
-        // id自增
-        s.id = s3Channels.length + 1
         s3Channels.push(s)
     }
 
@@ -185,7 +264,7 @@ export async function getUploadConfig(db, env) {
     // 从环境变量读取 Discord 配置
     if (env.DISCORD_BOT_TOKEN) {
         discordChannels.push({
-            id: 1,
+            id: 'DCAAA',
             name: 'Discord_env',
             type: 'discord',
             savePath: 'environment variable',
@@ -198,7 +277,8 @@ export async function getUploadConfig(db, env) {
         })
     }
 
-    for (const dc of settingsKV.discord?.channels || []) {
+    for (const storedDc of settingsKV.discord?.channels || []) {
+        const dc = toApiChannel(storedDc, 'discord');
         // 如果 savePath 是 environment variable，修改可变参数
         if (dc.savePath === 'environment variable') {
             // 如果环境变量未删除，进行覆盖操作
@@ -209,8 +289,6 @@ export async function getUploadConfig(db, env) {
             }
             continue
         }
-        // id 自增
-        dc.id = discordChannels.length + 1
         discordChannels.push(dc)
     }
 
@@ -230,7 +308,7 @@ export async function getUploadConfig(db, env) {
     // 从环境变量读取 HuggingFace 配置
     if (env.HF_TOKEN) {
         huggingfaceChannels.push({
-            id: 1,
+            id: 'HFAAA',
             name: 'HuggingFace_env',
             type: 'huggingface',
             savePath: 'environment variable',
@@ -242,7 +320,8 @@ export async function getUploadConfig(db, env) {
         })
     }
 
-    for (const hf of settingsKV.huggingface?.channels || []) {
+    for (const storedHf of settingsKV.huggingface?.channels || []) {
+        const hf = toApiChannel(storedHf, 'huggingface');
         // 如果 savePath 是 environment variable，修改可变参数
         if (hf.savePath === 'environment variable') {
             // 如果环境变量未删除，进行覆盖操作
@@ -252,8 +331,6 @@ export async function getUploadConfig(db, env) {
             }
             continue
         }
-        // id 自增
-        hf.id = huggingfaceChannels.length + 1
         huggingfaceChannels.push(hf)
     }
 
@@ -273,7 +350,7 @@ export async function getUploadConfig(db, env) {
     // 从环境变量读取 WebDAV 配置
     if (env.WEBDAV_BASE_URL) {
         webdavChannels.push({
-            id: 1,
+            id: 'WDAAA',
             name: 'WebDAV_env',
             type: 'webdav',
             savePath: 'environment variable',
@@ -288,7 +365,8 @@ export async function getUploadConfig(db, env) {
         })
     }
 
-    for (const wd of settingsKV.webdav?.channels || []) {
+    for (const storedWd of settingsKV.webdav?.channels || []) {
+        const wd = toApiChannel(storedWd, 'webdav');
         // 如果 savePath 是 environment variable，修改可变参数
         if (wd.savePath === 'environment variable') {
             // 如果环境变量未删除，进行覆盖操作
@@ -297,12 +375,9 @@ export async function getUploadConfig(db, env) {
                 webdavChannels[0].publicUrl = wd.publicUrl || webdavChannels[0].publicUrl
                 webdavChannels[0].headers = normalizeWebDAVHeaders(wd.headers || webdavChannels[0].headers)
                 webdavChannels[0].createDirectory = wd.createDirectory !== false
-                webdavChannels[0].quota = wd.quota
             }
             continue
         }
-        // id 自增
-        wd.id = webdavChannels.length + 1
         wd.headers = normalizeWebDAVHeaders(wd.headers || {})
         wd.createDirectory = wd.createDirectory !== false
         webdavChannels.push(wd)

@@ -1,5 +1,5 @@
 import { getDatabase } from '../../../utils/databaseAdapter.js';
-import { destroySessionsByAuthType, createSession } from '../../../utils/auth/sessionManager.js';
+import { createSession, rotateSessionSigningKey } from '../../../utils/auth/sessionManager.js';
 import { hashPassword } from '../../../utils/auth/passwordHash.js';
 import { fetchSecurityConfig } from '../../../utils/sysConfig.js';
 
@@ -101,13 +101,13 @@ export async function onRequestPost({ request, env }) {
     };
     await db.put('manage@sysConfig@security', JSON.stringify(stored));
 
-    if (wasConfigured) {
-        await destroySessionsByAuthType(env, 'admin');
-        return Response.json({ ok: true, adminPasswordChanged: true });
-    }
-
+    await rotateSessionSigningKey(env, 'admin');
     const session = await createSession(env, 'admin', username);
-    return Response.json({ ok: true, adminPasswordChanged: false }, {
+    return Response.json({
+        ok: true,
+        adminPasswordChanged: wasConfigured,
+        ...(wasConfigured ? { adminSessionRenewed: true } : {}),
+    }, {
         headers: { 'Set-Cookie': session.cookie },
     });
 }

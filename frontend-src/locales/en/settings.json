@@ -1,0 +1,12 @@
+{
+  "linkFormatTitle": "Link Format Settings",
+  "defaultCopyLink": "Default Copy Format",
+  "rawLink": "Raw Link",
+  "customLink": "Custom Link",
+  "customLinkTooltip": "Default link is https://your.domain/file/xxx.jpg <br> If custom link format is enabled, only the xxx.jpg part is kept, please enter the rest manually",
+  "enableCustom": "Enable Custom",
+  "customPrefix": "Custom Prefix",
+  "customPrefixPlaceholder": "Enter custom link prefix",
+  "confirm": "OK",
+  "s3Link": "S3 Link"
+}

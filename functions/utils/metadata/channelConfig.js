@@ -85,6 +85,10 @@ export function findConfiguredChannel(uploadConfig, groupName, metadata = {}) {
   if (!uploadConfig) return null;
 
   const channels = uploadConfig[groupName]?.channels || [];
+  if (metadata?.ChannelId) {
+    const idChannel = channels.find((channel) => channel.id === metadata.ChannelId);
+    if (idChannel) return idChannel;
+  }
   // 优先使用当前版本写入的渠道名，避免多渠道配置相似时误匹配
   if (metadata?.ChannelName) {
     const namedChannel = channels.find((channel) => channel.name === metadata.ChannelName);

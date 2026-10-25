@@ -268,7 +268,7 @@ async function mergeR2ChunksInfo(context, uploadId, completedChunks, metadata) {
         metadata.Channel = "CloudflareR2";
         // 从 R2 设置中获取渠道名称（优先使用指定的渠道名称）
         const r2Settings = context.uploadConfig.cfr2;
-        let r2ChannelName = "R2_env";
+        let r2ChannelName = "R2";
         if (specifiedChannelName) {
             const r2Channel = r2Settings.channels?.find(ch => ch.name === specifiedChannelName);
             if (r2Channel) {

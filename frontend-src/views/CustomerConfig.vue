@@ -6,6 +6,7 @@ import "core-js/modules/es.iterator.some.js";
 import fetchWithAuth from '@/utils/fetchWithAuth';
 import DashboardTabs from '@/components/DashboardTabs.vue';
 import backgroundManager from '@/mixins/backgroundManager';
+import notifyToast from '@/utils/notifyToast';
 export default {
   name: 'CustomerConfig',
   mixins: [backgroundManager],
@@ -86,7 +87,7 @@ export default {
         row.data = (result.data || []).sort(this.sortByTimestamp).reverse();
         row.filesLoaded = true;
       } catch (err) {
-        this.$message.error(this.$t('customerConfig.loadError'));
+        notifyToast(this.$t('customerConfig.loadError'), 'error');
       } finally {
         row.filesLoading = false;
       }
@@ -111,7 +112,7 @@ export default {
           };
         }));
       }).catch(() => {
-        this.$message.error(this.$t('customerConfig.loadError'));
+        notifyToast(this.$t('customerConfig.loadError'), 'error');
       }).finally(() => {
         this.loading = false;
       });
@@ -149,7 +150,7 @@ export default {
       });
     }).catch(err => {
       if (err.message !== 'Unauthorized') {
-        this.$message.error(this.$t('customerConfig.syncError'));
+        notifyToast(this.$t('customerConfig.syncError'), 'error');
       }
     }).finally(() => {
       this.loading = false;

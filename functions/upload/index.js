@@ -1,5 +1,5 @@
 import { userAuthCheck, UnauthorizedResponse } from "../utils/auth/userAuth";
-import { fetchUploadConfig, fetchSecurityConfig } from "../utils/sysConfig";
+import { fetchUploadConfig, fetchSecurityConfig, fetchPageConfig } from "../utils/sysConfig";
 import {
     createResponse, getUploadIp, resolveFileExt,
     purgeCDNCache, isBlockedUploadIp, buildUniqueFileId, endUpload, getImageDimensions
@@ -48,6 +48,59 @@ export async function onRequest(context) {  // Contents of context object
         const uploadId = url.searchParams.get('uploadId');
         const totalChunks = parseInt(url.searchParams.get('totalChunks')) || 0;
         return await handleCleanupRequest(context, uploadId, totalChunks);
+    }
+
+    // The administrator-selected channel is global. Resolve it server-side so
+    // clients do not need to log in or choose a channel on every device.
+    let uploadChannel = url.searchParams.get('uploadChannel');
+    let channelName = url.searchParams.get('channelName') || '';
+    if (!uploadChannel || !channelName) {
+        try {
+            const pageConfig = await fetchPageConfig(env);
+            const defaultChannelId = pageConfig?.config?.find((item) => item.id === 'defaultChannelId')?.value;
+            if (defaultChannelId) {
+                const match = Object.entries(uploadConfig).flatMap(([type, setting]) =>
+                    (setting?.channels || []).map((channel) => ({ ...channel, type }))
+                ).find((channel) => channel.id === defaultChannelId);
+                if (match) {
+                    uploadChannel = match.type;
+                    channelName = channelName || match.name;
+                    url.searchParams.set('uploadChannel', uploadChannel);
+                    url.searchParams.set('channelName', channelName);
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to resolve administrator default upload channel:', error);
+        }
+    }
+    uploadChannel = uploadChannel || 'telegram';
+    if (uploadChannel !== 'external') {
+        if (!channelName) {
+            return createResponse(JSON.stringify({
+                error: '未选择渠道名称，请选择存储渠道后再上传。'
+            }), {
+                status: 400,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
+
+        const channelConfigKey = {
+            telegram: 'telegram',
+            cfr2: 'cfr2',
+            s3: 's3',
+            discord: 'discord',
+            huggingface: 'huggingface',
+            webdav: 'webdav'
+        }[uploadChannel] || 'telegram';
+        const configuredChannels = uploadConfig[channelConfigKey]?.channels || [];
+        if (!configuredChannels.some(channel => channel.name === channelName)) {
+            return createResponse(JSON.stringify({
+                error: '所选渠道名称无效，请重新选择后再上传。'
+            }), {
+                status: 400,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
     }
 
     // 检查是否为初始化分块上传请求
@@ -290,7 +343,7 @@ async function uploadFileToCloudflareR2(context, fullId, metadata, returnLink) {
 
     // 更新metadata
     metadata.Channel = "CloudflareR2";
-    metadata.ChannelName = r2Channel.name || "R2_env";
+    metadata.ChannelName = r2Channel.name || "R2";
 
     // 写入数据库
     try {

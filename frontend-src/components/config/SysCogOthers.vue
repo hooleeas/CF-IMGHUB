@@ -1,4 +1,5 @@
 import fetchWithAuth from '@/utils/fetchWithAuth';
+import notifyToast from '@/utils/notifyToast';
 import FloatingSaveButton from '@/components/FloatingSaveButton.vue';
 export default {
   components: {
@@ -32,14 +33,21 @@ export default {
     }
   },
   methods: {
-    saveSettings() {
-      fetchWithAuth('/api/manage/sysConfig/others', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(this.settings)
-      }).then(() => this.$message.success(this.$t('sysOthers.settingsSaved')));
+    async saveSettings() {
+      try {
+        const response = await fetchWithAuth('/api/manage/sysConfig/others', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(this.settings)
+        });
+        if (!response.ok) throw new Error(`Settings save failed (${response.status})`);
+        notifyToast(this.$t('sysOthers.settingsSaved'));
+      } catch (error) {
+        console.error('Failed to save other settings:', error);
+        notifyToast(error.message || '保存其他设置失败，请稍后重试。', 'error');
+      }
     },
     async fetchAvailableChannels() {
       try {

@@ -5,10 +5,156 @@
 
 import { D1Database } from './d1Database.js';
 import {
-    decodeSystemConfigValue,
-    encodeSystemConfigValue,
+    deleteSystemConfigCategory,
     getSystemConfigStorageKeys,
+    readSystemConfig,
+    writeSystemConfigCategory,
 } from './sysConfigStorage.js';
+
+const IMAGE_KEY_PREFIX = 'IMG_';
+const IMAGE_KEY_PATTERN = /^IMG_[A-Z0-9]{20}$/;
+const IMAGE_ID_LENGTH = 20;
+const IMAGE_ID_SPACE = 36n ** BigInt(IMAGE_ID_LENGTH);
+const CHANNEL_GROUPS = {
+    CloudflareR2: 'cfr2',
+    R2: 'cfr2',
+    S3: 's3',
+    Telegram: 'telegram',
+    TelegramNew: 'telegram',
+    Discord: 'discord',
+    HuggingFace: 'huggingface',
+    WebDAV: 'webdav',
+};
+const CHANNEL_TYPES = {
+    cfr2: 'CloudflareR2',
+    s3: 'S3',
+    telegram: 'TelegramNew',
+    discord: 'Discord',
+    huggingface: 'HuggingFace',
+    webdav: 'WebDAV',
+};
+const IMAGE_FIELDS = {
+    FILE_NAME: 'FileName',
+    FILE_SIZE: 'FileSizeBytes',
+    CHANNEL: 'ChannelId',
+    URL: 'ExternalLink',
+    CONTENT: 'Content',
+    S3_FILE_KEY: 'S3FileKey',
+    TG_FILE_ID: 'TgFileId',
+    DISCORD_MESSAGE_ID: 'DiscordMessageId',
+    HF_FILE_PATH: 'HfFilePath',
+    WEBDAV_FILE_PATH: 'WebDAVFilePath',
+    IS_CHUNKED: 'IsChunked',
+    TOTAL_CHUNKS: 'TotalChunks',
+    WIDTH: 'Width',
+    HEIGHT: 'Height',
+    LIST_TYPE: 'ListType',
+    LABEL: 'Label',
+    TAGS: 'Tags',
+};
+const IMAGE_METADATA_ALIASES = {
+    S3_FILE_KEY: 'S3FileKey',
+    HF_FILE_PATH: 'HfFilePath',
+    TG_FILE_ID: 'TgFileId',
+    WEBDAV_FILE_PATH: 'WebDAVFilePath',
+    WEB_DAV_FILE_PATH: 'WebDAVFilePath',
+};
+const IMAGE_FIELD_NAMES = Object.fromEntries(
+    Object.entries(IMAGE_FIELDS).map(([storedName, metadataName]) => [metadataName, storedName])
+);
+
+async function imageKey(fileId) {
+    const digest = new Uint8Array(await globalThis.crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(fileId)
+    ));
+    let value = 0n;
+    for (let index = 0; index < 13; index++) {
+        value = (value << 8n) | BigInt(digest[index]);
+    }
+    return `${IMAGE_KEY_PREFIX}${(value % IMAGE_ID_SPACE).toString(36).toUpperCase().padStart(IMAGE_ID_LENGTH, '0')}`;
+}
+
+function inferImageType(fileName) {
+    const extension = String(fileName).split('.').pop()?.toLowerCase();
+    return ({
+        avif: 'image/avif',
+        bmp: 'image/bmp',
+        gif: 'image/gif',
+        ico: 'image/x-icon',
+        jfif: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        jpg: 'image/jpeg',
+        png: 'image/png',
+        svg: 'image/svg+xml',
+        tif: 'image/tiff',
+        tiff: 'image/tiff',
+        webp: 'image/webp',
+    })[extension] || 'application/octet-stream';
+}
+
+function isImageMetadata(metadata) {
+    return typeof metadata?.FileType === 'string'
+        && metadata.FileType.toLowerCase().startsWith('image/');
+}
+
+function parseImageRecord(value, key) {
+    let record;
+    try {
+        record = JSON.parse(value);
+    } catch (error) {
+        throw new Error(`图片 KV 记录“${key}”不是有效的 JSON。`, { cause: error });
+    }
+    if (!record || typeof record !== 'object' || Array.isArray(record)) {
+        throw new Error(`图片 KV 记录“${key}”格式无效。`);
+    }
+
+    const metadata = {};
+    for (const [storedName, fieldValue] of Object.entries(record)) {
+        if (storedName === 'CONTENT' || storedName === 'CHANNEL_TYPE' || storedName === 'CHANNEL_NAME') continue;
+        const metadataName = IMAGE_FIELDS[storedName] || IMAGE_METADATA_ALIASES[storedName];
+        if (!metadataName) continue;
+        metadata[metadataName] = fieldValue;
+    }
+    metadata.FileType ||= inferImageType(metadata.FileName);
+    if (metadata.ChannelId === 'EXTERNAL') metadata.Channel = 'External';
+    if (metadata.FileSizeBytes !== undefined) {
+        metadata.FileSize = (Number(metadata.FileSizeBytes) / 1024 / 1024).toFixed(2);
+    }
+
+    return {
+        value: record.CONTENT ?? '',
+        metadata,
+    };
+}
+
+function toImageRecord(fileId, value, metadata, channelId) {
+    const record = {};
+    for (const metadataName of [
+        'S3FileKey', 'TgFileId', 'DiscordMessageId', 'HfFilePath',
+        'WebDAVFilePath', 'IsChunked', 'TotalChunks', 'Width', 'Height',
+        'ListType', 'Label', 'Tags',
+    ]) {
+        const fieldValue = metadata?.[metadataName];
+        if (fieldValue === undefined || fieldValue === null) continue;
+        record[IMAGE_FIELD_NAMES[metadataName]] = fieldValue;
+    }
+
+    const sizeBytes = Number(metadata?.FileSizeBytes)
+        || Math.round((Number.parseFloat(metadata?.FileSize) || 0) * 1024 * 1024);
+    record.FILE_NAME = fileId;
+    record.FILE_SIZE = sizeBytes;
+    record.CHANNEL = metadata?.Channel === 'External'
+        ? 'EXTERNAL'
+        : channelId || metadata?.ChannelId || '';
+    if (metadata?.Channel === 'External' && metadata.ExternalLink) {
+        record.URL = metadata.ExternalLink;
+    }
+    if (value !== null && value !== undefined && value !== '') {
+        record.CONTENT = value;
+    }
+    return record;
+}
 
 /**
  * 创建数据库适配器
@@ -19,7 +165,7 @@ export function createDatabaseAdapter(env) {
     // 检查是否配置了数据库
     if (env.KV && typeof env.KV.get === 'function') {
         // 使用KV存储
-        return new KVAdapter(env.KV);
+        return new KVAdapter(env.KV, env);
     } else if (env.D1 && typeof env.D1.prepare === 'function') {
         // 使用D1数据库
         return new D1Database(env.D1);
@@ -34,8 +180,177 @@ export function createDatabaseAdapter(env) {
  * 保持与原有KV接口的兼容性
  */
 class KVAdapter {
-    constructor(kv) {
+    constructor(kv, env) {
         this.kv = kv;
+        this.env = env;
+        this.systemConfigPromise = null;
+    }
+
+    async resolveChannelId(metadata = {}) {
+        if (metadata.Channel === 'External') return 'EXTERNAL';
+        if (metadata.ChannelId) return metadata.ChannelId;
+        const group = CHANNEL_GROUPS[metadata.Channel];
+        if (!group) return '';
+
+        if (!this.systemConfigPromise) {
+            this.systemConfigPromise = readSystemConfig(
+                this.kv.get.bind(this.kv),
+                this.kv.put.bind(this.kv),
+                this.kv.delete.bind(this.kv)
+            );
+        }
+        const config = await this.systemConfigPromise;
+        const channels = config.upload?.[group]?.channels || [];
+        const channel = channels.find((item) => item.name === metadata.ChannelName);
+        if (channel?.id) return channel.id;
+        if (!metadata.ChannelName && channels.length === 1 && channels[0].id) {
+            return channels[0].id;
+        }
+        const environmentChannelIds = {
+            telegram: this.env.TG_BOT_TOKEN ? 'TGAAA' : '',
+            s3: this.env.S3_ACCESS_KEY_ID ? 'S3AAA' : '',
+        };
+        if (metadata.ChannelName === 'Telegram_env' || metadata.ChannelName === 'S3_env') {
+            return environmentChannelIds[group] || '';
+        }
+        throw new Error(`无法根据“${metadata.ChannelName || metadata.Channel}”解析上传渠道 ID。`);
+    }
+
+    async migrateLegacyImage(fileId, legacyRecord) {
+        if (!isImageMetadata(legacyRecord?.metadata)) {
+            return legacyRecord;
+        }
+        const channelId = await this.resolveChannelId(legacyRecord.metadata);
+        const newKey = await imageKey(fileId);
+        const serializedRecord = JSON.stringify(toImageRecord(
+            fileId,
+            legacyRecord.value,
+            legacyRecord.metadata,
+            channelId
+        ));
+        const existingRecord = await this.kv.get(newKey);
+        if (existingRecord !== null && existingRecord !== serializedRecord) {
+            throw new Error(`图片迁移目标“${newKey}”已存在且内容不同，已保留旧记录。`);
+        }
+        if (existingRecord === null) {
+            await this.kv.put(newKey, serializedRecord);
+        }
+        await this.kv.delete(fileId);
+        return {
+            value: legacyRecord.value ?? '',
+            metadata: await this.restoreImageMetadata(parseImageRecord(serializedRecord, newKey).metadata),
+        };
+    }
+
+    async restoreImageMetadata(metadata) {
+        const restored = { ...metadata };
+        if (restored.ChannelId === 'EXTERNAL') {
+            restored.Channel = 'External';
+            return restored;
+        }
+        if (!restored.ChannelId) return restored;
+
+        if (!this.systemConfigPromise) {
+            this.systemConfigPromise = readSystemConfig(
+                this.kv.get.bind(this.kv),
+                this.kv.put.bind(this.kv),
+                this.kv.delete.bind(this.kv)
+            );
+        }
+        const config = await this.systemConfigPromise;
+        const channelEntry = Object.entries(config.upload || {}).flatMap(([group, setting]) =>
+            (setting.channels || [])
+                .filter((channel) => channel.id === restored.ChannelId)
+                .map((channel) => ({ group, channel }))
+        )[0];
+        const group = channelEntry?.group || {
+            TGAAA: 'telegram',
+            S3AAA: 's3',
+        }[restored.ChannelId];
+        restored.Channel = group === 'telegram'
+            ? (restored.TgFileId || restored.IsChunked ? 'TelegramNew' : 'Telegram')
+            : CHANNEL_TYPES[group];
+        if (channelEntry) restored.ChannelName = channelEntry.channel.name;
+        if (!restored.Channel) {
+            throw new Error(`无法根据渠道 ID“${restored.ChannelId}”解析上传渠道。`);
+        }
+        return restored;
+    }
+
+    async migrateLegacyImageKey(key, value) {
+        const legacyRecord = parseImageRecord(value, key);
+        const legacyFields = JSON.parse(value);
+        const fileId = legacyRecord.metadata.FileName || key.slice(IMAGE_KEY_PREFIX.length);
+        const metadata = {
+            ...legacyRecord.metadata,
+            FileName: fileId,
+            Channel: legacyFields.CHANNEL_TYPE || legacyRecord.metadata.Channel,
+            ChannelName: legacyFields.CHANNEL_NAME,
+            ChannelId: legacyFields.CHANNEL,
+            ExternalLink: legacyFields.EXTERNAL_LINK
+                || (legacyFields.CHANNEL_TYPE === 'External' ? legacyFields.URL : undefined),
+        };
+        const channelId = await this.resolveChannelId(metadata);
+        const newKey = await imageKey(fileId);
+        const serializedRecord = JSON.stringify(toImageRecord(fileId, legacyRecord.value, metadata, channelId));
+        const currentValue = await this.kv.get(newKey);
+        if (currentValue !== null && currentValue !== serializedRecord) {
+            throw new Error(`图片迁移目标“${newKey}”已存在且内容不同，已保留旧记录。`);
+        }
+        if (currentValue === null) await this.kv.put(newKey, serializedRecord);
+        await this.kv.delete(key);
+        return {
+            name: fileId,
+            metadata: await this.restoreImageMetadata(parseImageRecord(serializedRecord, newKey).metadata),
+        };
+    }
+
+    async migrateLegacyImages() {
+        let cursor;
+        let scanned = 0;
+        let migrated = 0;
+        let failed = 0;
+        const failures = [];
+
+        do {
+            const page = await this.kv.list({
+                limit: 100,
+                ...(cursor ? { cursor } : {}),
+            });
+            for (let offset = 0; offset < page.keys.length; offset += 10) {
+                const batch = page.keys.slice(offset, offset + 10);
+                await Promise.all(batch.map(async ({ name }) => {
+                    if (name === 'IMGS' || name.startsWith('manage@')) {
+                        return;
+                    }
+                    try {
+                        if (name.startsWith(IMAGE_KEY_PREFIX)) {
+                            if (IMAGE_KEY_PATTERN.test(name)) return;
+                            const legacyValue = await this.kv.get(name);
+                            if (legacyValue === null) return;
+                            scanned++;
+                            await this.migrateLegacyImageKey(name, legacyValue);
+                            migrated++;
+                            return;
+                        }
+                        const legacyRecord = await this.kv.getWithMetadata(name);
+                        if (!isImageMetadata(legacyRecord?.metadata)) return;
+                        scanned++;
+                        await this.migrateLegacyImage(name, legacyRecord);
+                        migrated++;
+                    } catch (error) {
+                        failed++;
+                        if (failures.length < 50) {
+                            failures.push({ key: name, error: error.message || String(error) });
+                        }
+                        console.error(`Failed to migrate legacy image KV record "${name}":`, error);
+                    }
+                }));
+            }
+            cursor = page.list_complete ? null : page.cursor || null;
+        } while (cursor);
+
+        return { scanned, migrated, failed, failures };
     }
 
     // 直接代理到KV的方法
@@ -43,11 +358,29 @@ class KVAdapter {
         options = options || {};
         const configKeys = getSystemConfigStorageKeys(key);
         if (configKeys) {
-            return await this.kv.put(
-                configKeys.storageKey,
-                encodeSystemConfigValue(value),
-                options
+            return await writeSystemConfigCategory(
+                this.kv.get.bind(this.kv),
+                (storageKey, storageValue) => this.kv.put(storageKey, storageValue, options),
+                this.kv.delete.bind(this.kv),
+                configKeys.category,
+                value
             );
+        }
+        if (isImageMetadata(options.metadata)) {
+            const channelId = await this.resolveChannelId(options.metadata);
+            const imageStorageKey = await imageKey(key);
+            const currentValue = await this.kv.get(imageStorageKey);
+            if (currentValue !== null && parseImageRecord(currentValue, imageStorageKey).metadata.FileName !== key) {
+                throw new Error(`图片 ID“${key}”与现有 KV 图片记录冲突。`);
+            }
+            await this.kv.put(
+                imageStorageKey,
+                JSON.stringify(toImageRecord(key, value, options.metadata, channelId)),
+                {}
+            );
+            await this.kv.delete(`${IMAGE_KEY_PREFIX}${key}`);
+            await this.kv.delete(key);
+            return;
         }
         return await this.kv.put(key, value, options);
     }
@@ -56,47 +389,99 @@ class KVAdapter {
         options = options || {};
         const configKeys = getSystemConfigStorageKeys(key);
         if (configKeys) {
-            let value = await this.kv.get(configKeys.storageKey, options);
-            if (value === null) {
-                value = await this.kv.get(configKeys.legacyKey, options);
-                if (value !== null) {
-                    const migratedValue = encodeSystemConfigValue(value);
-                    await this.kv.put(
-                        configKeys.storageKey,
-                        migratedValue,
-                        options
-                    );
-                    await this.kv.delete(configKeys.legacyKey);
-                    value = migratedValue;
-                }
-            }
-            return value === null ? null : decodeSystemConfigValue(value);
+            const config = await readSystemConfig(
+                this.kv.get.bind(this.kv),
+                (storageKey, storageValue) => this.kv.put(storageKey, storageValue, options),
+                this.kv.delete.bind(this.kv)
+            );
+            return Object.hasOwn(config, configKeys.category)
+                ? JSON.stringify(config[configKeys.category])
+                : null;
         }
-        return await this.kv.get(key, options);
+        const record = await this.getWithMetadata(key, options);
+        return record?.value ?? null;
     }
 
     async getWithMetadata(key, options) {
         options = options || {};
-        if (getSystemConfigStorageKeys(key)) {
+        const configKeys = getSystemConfigStorageKeys(key);
+        if (configKeys) {
             const value = await this.get(key, options);
             return value === null ? null : { value, metadata: {} };
         }
-        return await this.kv.getWithMetadata(key, options);
+        const imageStorageKey = await imageKey(key);
+        const imageValue = await this.kv.get(imageStorageKey, options);
+        if (imageValue !== null) {
+            const record = parseImageRecord(imageValue, imageStorageKey);
+            record.metadata = await this.restoreImageMetadata(record.metadata);
+            return record;
+        }
+        const oldImageKey = `${IMAGE_KEY_PREFIX}${key}`;
+        const oldImageValue = await this.kv.get(oldImageKey, options);
+        if (oldImageValue !== null && !IMAGE_KEY_PATTERN.test(oldImageKey)) {
+            const migrated = await this.migrateLegacyImageKey(oldImageKey, oldImageValue);
+            return await this.getWithMetadata(migrated.name, options);
+        }
+        if (typeof this.kv.getWithMetadata !== 'function') {
+            const value = await this.kv.get(key, options);
+            return value === null ? null : { value, metadata: null };
+        }
+        const legacyRecord = await this.kv.getWithMetadata(key, options);
+        return this.migrateLegacyImage(key, legacyRecord);
     }
 
     async delete(key, options) {
         options = options || {};
         const configKeys = getSystemConfigStorageKeys(key);
         if (configKeys) {
-            await this.kv.delete(configKeys.storageKey, options);
-            return await this.kv.delete(configKeys.legacyKey, options);
+            return await deleteSystemConfigCategory(
+                this.kv.get.bind(this.kv),
+                (storageKey, storageValue) => this.kv.put(storageKey, storageValue, options),
+                this.kv.delete.bind(this.kv),
+                configKeys.category
+            );
         }
+        await this.kv.delete(await imageKey(key), options);
+        await this.kv.delete(`${IMAGE_KEY_PREFIX}${key}`, options);
         return await this.kv.delete(key, options);
     }
 
     async list(options) {
         options = options || {};
-        return await this.kv.list(options);
+        const result = await this.kv.list(options);
+        const mapped = await Promise.all(result.keys.map(async (item) => {
+            if (item.name.startsWith(IMAGE_KEY_PREFIX)) {
+                const value = await this.kv.get(item.name);
+                if (value === null) return null;
+                if (!IMAGE_KEY_PATTERN.test(item.name)) {
+                    return await this.migrateLegacyImageKey(item.name, value);
+                }
+                const record = parseImageRecord(value, item.name);
+                record.metadata = await this.restoreImageMetadata(record.metadata);
+                return {
+                    ...item,
+                    name: record.metadata.FileName,
+                    metadata: record.metadata,
+                };
+            }
+            if (item.name === 'IMGS') return null;
+            if (typeof this.kv.getWithMetadata !== 'function') return item;
+            const legacyRecord = await this.kv.getWithMetadata(item.name);
+            if (isImageMetadata(legacyRecord?.metadata)) {
+                const migrated = await this.migrateLegacyImage(item.name, legacyRecord);
+                return { ...item, metadata: migrated.metadata };
+            }
+            return item;
+        }));
+        return { ...result, keys: mapped.filter(Boolean) };
+    }
+
+    async getRaw(key, options) {
+        return await this.kv.get(key, options);
+    }
+
+    async deleteRaw(key, options) {
+        return await this.kv.delete(key, options);
     }
 
     // 为了兼容性，添加一些别名方法
@@ -137,9 +522,8 @@ class KVAdapter {
         return await this.list(options);
     }
 
-    async putIndexOperation(operationId, operation, options) {
-        const key = 'manage@index@operation_' + operationId;
-        return await this.put(key, JSON.stringify(operation), options);
+    async putIndexOperation() {
+        return;
     }
 
     async getIndexOperation(operationId, options) {

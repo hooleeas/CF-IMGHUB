@@ -15,13 +15,48 @@ For detailed feature and deployment guides, see the [project documentation](http
 
 ## Docker
 
-The Compose file in this repository runs the application on port `7654` and persists its data in `./data`:
+### Run the Docker image directly
+
+Run the current image:
+
+```bash
+docker run -d --name cf-imghub --restart=always \
+  -p 7654:8080 \
+  -v "$(pwd)/data:/app/data" \
+  ghcr.io/hooleeas/cf-imghub:latest
+```
+
+Check the service:
+
+```bash
+curl http://localhost:7654/
+```
+
+### Docker Compose
+
+The Compose setup uses host port `7654` and persists data in `./data`:
+
+```yaml
+services:
+  cf-imghub:
+    image: ghcr.io/hooleeas/cf-imghub:latest
+    container_name: cf-imghub
+    ports:
+      - "7654:8080"
+    volumes:
+      - ./data:/app/data
+    restart: always
+```
+
+Save it as `docker-compose.yml`, then run:
 
 ```bash
 docker compose up -d
 ```
 
 Open [http://localhost:7654](http://localhost:7654) after the container starts.
+
+`7654` is the host port and `8080` is the fixed container port. To use another host port, change only the left side of `-p`.
 
 The Compose file uses `ghcr.io/hooleeas/cf-imghub:latest`. GitHub Actions publishes a development image from pushes to `main`. To publish a versioned release, push a semantic version tag such as `v2.7.5`; the workflow publishes `2.7.5`, `2.7`, `2`, and `latest` tags for that release. If the package is private, make it public in GitHub Packages before pulling it anonymously.
 
@@ -36,7 +71,7 @@ docker compose down
 
 ### Cloudflare Pages
 
-Deploy this repository as a Cloudflare Pages project. Set the build output directory to `frontend-dist` and configure the required bindings and environment variables in the Cloudflare dashboard.
+Connect this repository to Cloudflare Pages. Use `None` as the framework preset, leave the build command empty, and set the build output directory to `frontend-dist`. In Pages → Settings → Functions → Bindings, configure the `KV` and `R2` bindings using the names expected by the code, and add the required environment variables. Pages will deploy automatically after pushes to the production branch.
 
 ### Cloudflare Workers
 

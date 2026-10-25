@@ -1,0 +1,19 @@
+{
+  "title": "历史记录",
+  "totalRecords": "共 {count} 条",
+  "switchView": "切换视图",
+  "clearRecords": "清空记录",
+  "loading": "加载中...",
+  "pullToLoadMore": "下拉加载更多",
+  "noMoreRecords": "没有更多记录了",
+  "emptyHistory": "暂无上传记录",
+  "linkCopied": "链接已复制",
+  "copyFailed": "复制失败",
+  "clearConfirmTitle": "提示",
+  "clearConfirmMessage": "确定要清空所有上传记录吗？",
+  "clearConfirmOk": "确定",
+  "clearConfirmCancel": "取消",
+  "recordsCleared": "记录已清空",
+  "deleteConfirmMessage": "确定要删除这条记录吗？",
+  "recordDeleted": "记录已删除"
+}

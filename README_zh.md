@@ -15,13 +15,48 @@
 
 ## Docker 部署
 
-本仓库的 Compose 配置使用 `7654` 端口，并将数据持久化到 `./data`：
+### 直接运行 Docker 镜像
+
+运行当前镜像：
+
+```bash
+docker run -d --name cf-imghub --restart=always \
+  -p 7654:8080 \
+  -v "$(pwd)/data:/app/data" \
+  ghcr.io/hooleeas/cf-imghub:latest
+```
+
+检查服务：
+
+```bash
+curl http://localhost:7654/
+```
+
+### Docker Compose
+
+Compose 配置使用 `7654` 端口，并将数据持久化到 `./data`：
+
+```yaml
+services:
+  cf-imghub:
+    image: ghcr.io/hooleeas/cf-imghub:latest
+    container_name: cf-imghub
+    ports:
+      - "7654:8080"
+    volumes:
+      - ./data:/app/data
+    restart: always
+```
+
+保存为 `docker-compose.yml` 后运行：
 
 ```bash
 docker compose up -d
 ```
 
 容器启动后访问 [http://localhost:7654](http://localhost:7654)。
+
+这里的 `7654` 是宿主机端口，容器内部端口固定为 `8080`；如需更换访问端口，只需修改左侧端口。
 
 Compose 配置使用镜像 `ghcr.io/hooleeas/cf-imghub:latest`。推送到 `main` 分支时，GitHub Actions 会构建并发布开发镜像。发布正式版本时，推送语义化版本标签（例如 `v2.7.5`），工作流会为该版本发布 `2.7.5`、`2.7`、`2` 和 `latest` 标签。如果软件包是私有的，请先在 GitHub Packages 中将其设为公开，方便匿名拉取。
 
@@ -36,7 +71,7 @@ docker compose down
 
 ### Cloudflare Pages
 
-将本仓库部署为 Cloudflare Pages 项目，并将构建输出目录设置为 `frontend-dist`。根据实际使用的功能，在 Cloudflare 控制台配置所需的绑定和环境变量。
+将本仓库连接到 Cloudflare Pages。构建设置建议为：框架选择 `None`，构建命令留空，构建输出目录填写 `frontend-dist`。在 Pages 项目的 Settings → Functions → Bindings 中按代码名称配置 `KV` 和 `R2` 绑定，并在 Environment variables 中配置所需变量。每次推送到生产分支后，Pages 会自动重新部署。
 
 ### Cloudflare Workers
 
