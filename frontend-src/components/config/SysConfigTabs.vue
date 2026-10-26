@@ -22,10 +22,6 @@ export default {
         icon: 'cloud-upload',
         titleKey: 'sysConfigTabs.uploadSettings'
       }, {
-        index: 'security',
-        icon: 'shield',
-        titleKey: 'sysConfigTabs.securitySettings'
-      }, {
         index: 'others',
         icon: 'cog',
         titleKey: 'sysConfigTabs.otherSettings'

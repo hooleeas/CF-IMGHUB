@@ -2395,11 +2395,20 @@
 
   const REMOVE_LEGACY_ADMIN_SECTIONS = () => {
     if (!document.querySelector('.admin-settings-page')) return;
-    const LEGACY = /^(认证管理|图像审查|IP管理|访问管理)$/i;
-    document.querySelectorAll('.admin-settings-page h1, .admin-settings-page h2, .admin-settings-page h3, .admin-settings-page .first-title').forEach((TITLE) => {
+    const LEGACY = /^(认证管理|图像审查|IP管理|访问管理|安全设置|authentication management|image review|ip management|access management|security settings)$/i;
+
+    document.querySelectorAll('.admin-settings-page .security-settings').forEach((SECTION) => SECTION.remove());
+    document.querySelectorAll('.admin-settings-page h1, .admin-settings-page h2, .admin-settings-page h3, .admin-settings-page h4, .admin-settings-page .first-title, .admin-settings-page .section-title, .admin-settings-page .el-tabs__item, .admin-settings-page [role="tab"]').forEach((TITLE) => {
       if (!LEGACY.test(TITLE.textContent.trim())) return;
+      const PANE_ID = TITLE.getAttribute('aria-controls');
+      if (PANE_ID) document.getElementById(PANE_ID)?.remove();
       const SECTION = TITLE.closest('.first-settings, .admin-section, section, .settings-section');
       if (SECTION) SECTION.remove();
+      else TITLE.remove();
+    });
+
+    document.querySelectorAll('.admin-settings-page .el-tabs__header').forEach((HEADER) => {
+      if (!HEADER.querySelector('.el-tabs__item, [role="tab"]')) HEADER.remove();
     });
   };
 
@@ -2450,7 +2459,7 @@
     PARK_CLIENT_SETTINGS_SOURCES();
     SYNC_NATIVE_WEB_DAV_SELECT();
 
-    document.querySelectorAll('.admin-settings-content > .security-settings').forEach((SECTION) => SECTION.remove());
+    document.querySelectorAll('.admin-settings-page .security-settings').forEach((SECTION) => SECTION.remove());
 
     document.querySelectorAll('.el-form-item').forEach((ITEM) => {
       const LABEL = ITEM.querySelector('.el-form-item__label')?.textContent?.trim() || ITEM.textContent || '';

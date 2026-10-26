@@ -29,7 +29,6 @@
   "responseFieldPathPlaceholder": "JSON 路径，如 country.name",
   "addResponseField": "添加字段",
   "uploadManagement": "上传管理",
-  "accessManagement": "访问管理",
   "domainFilter": "域名过滤",
   "allowedDomains": "放行域名",
   "allowedDomainsTooltip": "1.针对访问域名设置权限 <br/> 2.留空默认全部放行，多个域名请用英文逗号分隔",

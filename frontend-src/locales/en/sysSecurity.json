@@ -29,7 +29,6 @@
   "responseFieldPathPlaceholder": "JSON path, e.g. country.name",
   "addResponseField": "Add Field",
   "uploadManagement": "Upload Management",
-  "accessManagement": "Access Management",
   "domainFilter": "Domain Filter",
   "allowedDomains": "Allowed Domains",
   "allowedDomainsTooltip": "1. Set permissions based on access domain <br/> 2. Leave empty to allow all, separate multiple domains with commas",
