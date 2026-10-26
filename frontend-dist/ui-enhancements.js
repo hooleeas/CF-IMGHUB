@@ -831,7 +831,10 @@
       if (INITIAL_PATHNAME !== ADMIN_PATH && window.location.pathname !== ADMIN_PATH) return;
       // The configured admin path is rendered by admin-app.js and no longer
       // needs the legacy Vue router route injection.
-      if (INITIAL_PATHNAME === ADMIN_PATH || window.location.pathname === ADMIN_PATH) return;
+      if (INITIAL_PATHNAME === ADMIN_PATH || window.location.pathname === ADMIN_PATH) {
+        HIDE_REMOVED_SETTINGS();
+        return;
+      }
       let RETRIES = 0;
       const TRY_ADD_ROUTE = () => {
         if (ADD_CONFIGURED_ADMIN_ROUTE(ADMIN_PATH) || RETRIES++ >= 100) return;
@@ -951,7 +954,7 @@
     ROOT.id = 'admin-backup-root';
     ROOT.innerHTML = `
       <header class="migration-header">
-        <div class="migration-header-main"><h1>备份与迁移</h1><p class="subtitle">共 <span id="entry-count" data-backup-count>0</span> 项数据库数据</p></div>
+        <div class="migration-header-main"><span class="admin-page-eyebrow">数据管理</span><h1>备份与迁移</h1><p class="subtitle">共 <span id="entry-count" data-backup-count>0</span> 项数据库数据</p></div>
         <div class="migration-actions">
           <button type="button" class="danger" id="reset-open" data-backup-action="reset">恢复出厂设置</button>
           <button type="button" id="export-all" data-backup-action="export">导出</button>
@@ -961,6 +964,8 @@
           <a class="back-link ui-button ui-button-secondary" data-backup-home>返回管理面板</a>
         </div>
       </header>
+      <section class="backup-intro"><span class="backup-intro-icon" aria-hidden="true">⇄</span><div><strong>保护并管理站点数据</strong><p>可导出完整 JSON 备份、恢复数据，或在 KV 与 D1 之间迁移元数据。</p></div><span class="backup-database-badge" data-database-badge>正在读取</span></section>
+      <div class="backup-toolbar"><label class="backup-search"><span class="visually-hidden">搜索数据库键</span><input type="search" id="backup-search" placeholder="搜索配置键或记录…" autocomplete="off"><span aria-hidden="true">⌕</span></label><span class="backup-visible-count" id="backup-visible-count">正在加载…</span></div>
       <div id="json-list" class="json-list" aria-live="polite"></div>
       <input class="admin-backup-file" type="file" accept=".json,application/json" hidden>
       <div class="overlay" id="view-overlay" aria-hidden="true"><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="view-title"><div class="dialog-header"><h2 id="view-title"></h2><button type="button" class="dialog-close secondary" id="view-close" aria-label="关闭">×</button></div><pre class="json-value" id="view-value"></pre></section></div>
@@ -973,6 +978,9 @@
     const LIST = ROOT.querySelector('#json-list');
     const SUBTITLE = ROOT.querySelector('.subtitle');
     const COUNT = ROOT.querySelector('#entry-count');
+    const SEARCH = ROOT.querySelector('#backup-search');
+    const VISIBLE_COUNT = ROOT.querySelector('#backup-visible-count');
+    const DATABASE_BADGE = ROOT.querySelector('[data-database-badge]');
     const FILE_INPUT = ROOT.querySelector('.admin-backup-file');
     const TOAST = ROOT.querySelector('#toast');
     const VIEW_OVERLAY = ROOT.querySelector('#view-overlay');
@@ -1013,6 +1021,18 @@
     };
     const SYNC_DATABASE_STORAGE_BUTTON = () => {
       DATABASE_STORAGE_OPEN.hidden = DATABASE_STATUS?.canSwitch !== true;
+      DATABASE_BADGE.textContent = `${DATABASE_STATUS?.current || 'KV'} 数据库`;
+      DATABASE_BADGE.classList.toggle('is-migration-ready', DATABASE_STATUS?.canSwitch === true);
+    };
+    const FILTER_ENTRIES = () => {
+      const QUERY = SEARCH.value.trim().toLocaleLowerCase();
+      let VISIBLE = 0;
+      LIST.querySelectorAll('.json-entry[data-entry-key]').forEach((CARD) => {
+        const MATCH = CARD.dataset.entryKey.includes(QUERY);
+        CARD.hidden = !MATCH;
+        if (MATCH) VISIBLE += 1;
+      });
+      VISIBLE_COUNT.textContent = `${VISIBLE} / ${ENTRIES.length} 项`;
     };
     const LOAD_ENTRIES = async () => {
       LIST.replaceChildren();
@@ -1044,12 +1064,19 @@
         const NAME = document.createElement('div');
         NAME.className = 'json-key';
         NAME.textContent = ENTRY.name;
+        const CATEGORY = document.createElement('span');
+        CATEGORY.className = 'json-category';
+        CATEGORY.textContent = ENTRY.name.startsWith('IMG_') ? '图片记录'
+          : /CONFIG|setting|sysConfig/i.test(ENTRY.name) ? '配置'
+            : /subscription|link|url/i.test(ENTRY.name) ? '订阅与链接' : '数据库记录';
         const SHOW = document.createElement('button');
         SHOW.type = 'button';
         SHOW.className = 'secondary json-show';
         SHOW.textContent = '展示';
         SHOW.dataset.backupIndex = String(INDEX);
         HEAD.append(NAME, SHOW);
+        CARD.dataset.entryKey = ENTRY.name.toLocaleLowerCase();
+        CARD.append(CATEGORY);
         CARD.append(HEAD);
         return CARD;
       }) : [Object.assign(document.createElement('div'), {
@@ -1057,6 +1084,7 @@
         textContent: 'KV 暂无数据',
       })];
       LIST.replaceChildren(...CARDS);
+      FILTER_ENTRIES();
       NORMALIZE_CONTROLS(ROOT);
     };
     const READ_ENTRY = async (KEY) => {
@@ -1211,6 +1239,7 @@
         }
       }
     });
+    SEARCH.addEventListener('input', FILTER_ENTRIES);
     ROOT.addEventListener('change', (EVENT) => {
       if (EVENT.target.name === 'database-storage-target') {
         DATABASE_STORAGE_SWITCH.disabled = EVENT.target.value === DATABASE_STATUS?.current;
@@ -2317,10 +2346,44 @@
     document.querySelector('.admin-settings-page')?.remove();
     const ROOT = document.createElement('main');
     ROOT.id = 'admin-file-root';
-    ROOT.innerHTML = '<section class="admin-backup-migration-card"><div class="admin-backup-migration-copy"><h2>图片管理</h2><p>查看、搜索和管理所有已上传的图片文件。</p></div><a class="back-link ui-button" href="/admin">返回管理面板</a></section><section class="admin-file-list"><h1>所有图片</h1><p class="admin-file-status">正在加载…</p><div class="admin-file-grid"></div></section>';
+    ROOT.className = 'admin-file-manager';
+    ROOT.innerHTML = '<header class="admin-file-header"><div><span class="admin-page-eyebrow">文件管理</span><h1>图片管理</h1><p>浏览已上传的文件，复制链接、重命名或删除。</p></div><a class="back-link ui-button ui-button-secondary" href="' + CURRENT_ADMIN_PATH + '">返回管理面板</a></header><section class="admin-file-list"><div class="admin-file-toolbar"><label class="admin-file-search"><span class="visually-hidden">搜索文件</span><input type="search" class="admin-file-search-input" placeholder="搜索文件名…" autocomplete="off"><span aria-hidden="true">⌕</span></label><label class="admin-file-sort"><span class="visually-hidden">排序方式</span><select class="admin-file-sort-select" aria-label="排序方式"><option value="asc">名称 A–Z</option><option value="desc">名称 Z–A</option></select></label><p class="admin-file-status" role="status">正在加载…</p></div><div class="admin-file-grid"></div></section>';
     document.body.append(ROOT);
     const GRID = ROOT.querySelector('.admin-file-grid');
     const STATUS = ROOT.querySelector('.admin-file-status');
+    const SEARCH = ROOT.querySelector('.admin-file-search-input');
+    const SORT = ROOT.querySelector('.admin-file-sort-select');
+    const FILTER_FILES = () => {
+      const QUERY = SEARCH.value.trim().toLocaleLowerCase();
+      let VISIBLE = 0;
+      const CARDS = [...GRID.querySelectorAll('.admin-file-item')].sort((LEFT, RIGHT) => (
+        SORT.value === 'desc'
+          ? RIGHT.dataset.fileName.localeCompare(LEFT.dataset.fileName)
+          : LEFT.dataset.fileName.localeCompare(RIGHT.dataset.fileName)
+      ));
+      GRID.append(...CARDS);
+      CARDS.forEach((CARD) => {
+        const MATCH = CARD.dataset.fileName.includes(QUERY);
+        CARD.hidden = !MATCH;
+        if (MATCH) VISIBLE += 1;
+      });
+      const TOTAL = GRID.querySelectorAll('.admin-file-item').length;
+      STATUS.textContent = `${VISIBLE} / ${TOTAL} 张图片`;
+      GRID.querySelector('.admin-file-empty')?.remove();
+      if (TOTAL === 0) {
+        const EMPTY = document.createElement('div');
+        EMPTY.className = 'admin-file-empty';
+        EMPTY.innerHTML = '<span aria-hidden="true">▧</span><strong>还没有图片</strong><p>上传的图片会显示在这里。</p>';
+        GRID.append(EMPTY);
+      } else if (VISIBLE === 0) {
+        const EMPTY = document.createElement('div');
+        EMPTY.className = 'admin-file-empty';
+        EMPTY.innerHTML = '<span aria-hidden="true">⌕</span><strong>没有匹配的图片</strong><p>试试其他文件名。</p>';
+        GRID.append(EMPTY);
+      }
+    };
+    SEARCH.addEventListener('input', FILTER_FILES);
+    SORT.addEventListener('change', FILTER_FILES);
     const DIALOG = (TITLE, MESSAGE, INPUT_VALUE = '') => new Promise((RESOLVE) => {
       const MODAL = window.OPEN_MODAL(TITLE, `<p>${MESSAGE}</p>${INPUT_VALUE ? `<input class="ui-modal-input" value="${INPUT_VALUE.replace(/"/g, '&quot;')}">` : ''}<div class="ui-modal-actions"><button type="button" class="ui-modal-cancel">取消</button><button type="button" class="ui-modal-confirm">确定</button></div>`);
       const INPUT = MODAL.querySelector('.ui-modal-input');
@@ -2333,14 +2396,19 @@
       const DATA = await RESPONSE.json();
       if (!RESPONSE.ok) throw new Error(DATA.error || '加载失败');
       const FILES = DATA.files || [];
-      STATUS.textContent = `共 ${FILES.length} 个文件`;
       FILES.forEach((FILE) => {
         const CARD = document.createElement('article');
         CARD.className = 'admin-file-item';
         const NAME = FILE.name || FILE.key || FILE.path || '';
         let CURRENT_NAME = NAME;
-        CARD.innerHTML = `<div class="admin-file-thumb"><img src="${String(FILE.url || `/file/${NAME}`).replace(/"/g, '&quot;')}" alt=""></div><div class="admin-file-info"><strong></strong><button type="button" class="admin-file-rename">编辑</button><button type="button" class="button-red">删除</button></div>`;
+        CARD.dataset.fileName = NAME.toLocaleLowerCase();
+        CARD.innerHTML = '<div class="admin-file-thumb"><img alt="" loading="lazy"><span class="admin-file-preview-fallback" aria-hidden="true">▧</span></div><div class="admin-file-info"><strong></strong><span class="admin-file-meta"></span><div class="admin-file-actions"><button type="button" class="admin-file-rename">重命名</button><button type="button" class="button-red">删除</button></div></div>';
+        const IMAGE = CARD.querySelector('img');
+        IMAGE.src = FILE.url || `/file/${encodeURIComponent(NAME)}`;
+        IMAGE.alt = NAME;
+        IMAGE.addEventListener('error', () => CARD.classList.add('preview-unavailable'), { once: true });
         CARD.querySelector('strong').textContent = NAME;
+        CARD.querySelector('.admin-file-meta').textContent = FILE.size ? `${(Number(FILE.size) / 1024 / 1024).toFixed(2)} MB` : '图片文件';
         CARD.querySelector('.admin-file-rename').addEventListener('click', async () => {
           const DOT = CURRENT_NAME.lastIndexOf('.');
           const EXTENSION = DOT > 0 ? CURRENT_NAME.slice(DOT) : '';
@@ -2351,14 +2419,16 @@
           const RENAME_RESPONSE = await fetch(`/api/manage/rename/${encodeURIComponent(CURRENT_NAME)}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ newFileId: NEW_NAME }) });
           if (!RENAME_RESPONSE.ok) { window.CC('重命名失败，请检查文件名。', true); return; }
           CARD.querySelector('strong').textContent = NEW_NAME.trim();
+          CARD.dataset.fileName = NEW_NAME.trim().toLocaleLowerCase();
           CURRENT_NAME = NEW_NAME.trim();
+          FILTER_FILES();
           window.CC('图片名称已更新');
         });
         CARD.querySelector('button.button-red').addEventListener('click', async () => {
           const CONFIRMED = await DIALOG('删除图片', `确定删除“${CURRENT_NAME}”吗？`);
           if (!CONFIRMED) return;
           const DELETE_RESPONSE = await fetch(`/api/manage/delete/${encodeURIComponent(CURRENT_NAME)}`, { method: 'DELETE', credentials: 'include' });
-          if (DELETE_RESPONSE.ok) CARD.remove(); else window.CC('删除失败，请重试。', true);
+          if (DELETE_RESPONSE.ok) { CARD.remove(); FILTER_FILES(); } else window.CC('删除失败，请重试。', true);
         });
         CARD.addEventListener('click', async (EVENT) => {
           if (EVENT.target.closest('button')) return;
@@ -2372,6 +2442,7 @@
         });
         GRID.append(CARD);
       });
+      FILTER_FILES();
     } catch (ERROR) {
       STATUS.textContent = `加载失败：${ERROR.message}`;
       window.CC(STATUS.textContent, true);
