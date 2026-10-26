@@ -2513,6 +2513,42 @@ html.dark .admin-settings-content .storage-disclosure:active:not(:disabled) {
 
 .admin-file-page { min-height: 100vh; padding: 32px 4vw; }
 .admin-file-route #app > .admin-settings-page { display: none !important; }
+.standalone-admin .standalone-header { display:flex; align-items:center; justify-content:space-between; gap:18px; margin-bottom:24px; }
+.standalone-admin .standalone-header h1 { margin:0; font-size:clamp(24px,4vw,36px); }
+.standalone-admin .standalone-header nav { display:flex; flex-wrap:wrap; gap:10px; }
+.standalone-admin .page-header { display:grid; gap:16px; }
+.standalone-admin .page-header h2 { margin:0; }
+.standalone-admin .admin-default-upload-channel-control { position:static; display:grid; gap:8px; }
+.standalone-admin .admin-default-upload-channel-control select { min-width:260px; }
+.standalone-admin .client-settings-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.standalone-admin .client-settings-field { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.standalone-admin .client-settings-field input[type=number] { max-width:140px; }
+.standalone-admin .channel-group { margin-top:14px; padding:16px; border:1px solid #dbe2ec; border-radius:16px; background:rgba(255,255,255,.86); }
+.standalone-admin .group-header,.standalone-admin .card-header,.standalone-admin .card-actions { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.standalone-admin .group-title { margin:0; }
+.standalone-admin .channel-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px; margin-top:14px; }
+.standalone-admin .channel-card { min-width:0; padding:14px; border:1px solid #e2e7ed; border-radius:12px; }
+.standalone-admin .card-title { margin:0; overflow-wrap:anywhere; }
+.standalone-admin .channel-empty { grid-column:1/-1; margin:12px 0; color:#697386; text-align:center; }
+.standalone-config-cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:12px; }
+.standalone-config-cards article { padding:16px; border:1px solid var(--ADMIN-LINE); border-radius:16px; background:var(--ADMIN-SURFACE); }
+.standalone-config-cards h2 { margin-top:0; }
+.standalone-dialog-backdrop { position:fixed; z-index:10000; inset:0; display:grid; place-items:center; overflow:auto; padding:20px; background:rgba(13,20,16,.55); }
+.standalone-dialog { box-sizing:border-box; width:min(680px,100%); max-height:calc(100vh - 40px); overflow:auto; padding:20px; border:1px solid var(--ADMIN-LINE); border-radius:18px; background:#fff; color:#202722; box-shadow:0 18px 60px rgba(0,0,0,.22); }
+.standalone-dialog header,.standalone-dialog footer { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.standalone-dialog header h2 { margin:0 0 16px; }
+.standalone-dialog header [data-close] { border:0; background:transparent; font-size:26px; cursor:pointer; }
+.standalone-dialog form { display:grid; gap:14px; }
+.standalone-dialog label { display:grid; gap:7px; }
+.standalone-dialog input:not([type=checkbox]),.standalone-dialog textarea { box-sizing:border-box; width:100%; padding:10px 12px; border:1px solid #cbd5df; border-radius:9px; font:inherit; }
+.standalone-dialog textarea { min-height:300px; resize:vertical; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; }
+.standalone-dialog footer { justify-content:flex-end; }
+.standalone-dialog .dialog-error { margin:0; color:#b42318; }
+.standalone-toast { position:fixed; z-index:11000; left:50%; bottom:24px; transform:translate(-50%,20px); opacity:0; pointer-events:none; padding:11px 16px; border-radius:10px; color:white; background:#246f4b; transition:.2s; }
+.standalone-toast.show { transform:translate(-50%,0); opacity:1; }
+.standalone-toast.error { background:#b42318; }
+.standalone-error { max-width:700px; margin:15vh auto; padding:24px; }
+@media(max-width:700px) { .standalone-admin .standalone-header { align-items:flex-start; flex-direction:column; }.standalone-admin .client-settings-fields,.standalone-config-cards { grid-template-columns:1fr; }.standalone-admin .admin-default-upload-channel-control select { min-width:0; width:100%; } }
 @media (max-width: 900px) {
   .mobile-viewport #app { visibility: hidden; }
   .mobile-viewport.app-ready #app { visibility: visible; }

@@ -829,6 +829,9 @@
         return;
       }
       if (INITIAL_PATHNAME !== ADMIN_PATH && window.location.pathname !== ADMIN_PATH) return;
+      // The configured admin path is rendered by admin-app.js and no longer
+      // needs the legacy Vue router route injection.
+      if (INITIAL_PATHNAME === ADMIN_PATH || window.location.pathname === ADMIN_PATH) return;
       let RETRIES = 0;
       const TRY_ADD_ROUTE = () => {
         if (ADD_CONFIGURED_ADMIN_ROUTE(ADMIN_PATH) || RETRIES++ >= 100) return;
@@ -2427,6 +2430,9 @@
   REMOVE_LEGACY_ADMIN_SECTIONS();
 
   const HIDE_REMOVED_SETTINGS = () => {
+    // The standalone admin owns its markup and behavior; do not run DOM surgery
+    // intended for the retired Vue settings component on this page.
+    if (document.querySelector('.standalone-admin')) return;
     REMOVE_LEGACY_LOGIN_ROUTE();
     REMOVE_OBSOLETE_PAGE_CONTROLS();
     REMOVE_LEGACY_ADMIN_SECTIONS();
@@ -2581,6 +2587,7 @@
   let SETTINGS_OBSERVER_STOP_TIMER;
   const ADMIN_ENHANCEMENTS_READY = () => {
     if (window.location.pathname !== CURRENT_ADMIN_PATH) return false;
+    if (document.querySelector('.standalone-admin')) return true;
     if (window.location.hash === '#JSON') return Boolean(document.querySelector('#admin-backup-root'));
     if (window.location.hash === '#File') return Boolean(document.querySelector('#admin-file-root'));
     const ADMIN_PAGE = document.querySelector('.admin-settings-page');
