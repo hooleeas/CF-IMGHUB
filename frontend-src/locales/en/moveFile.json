@@ -1,0 +1,15 @@
+{
+  "title": "Move File",
+  "batchTitle": "Batch Move Files",
+  "targetDirectory": "Target Directory",
+  "targetPlaceholder": "Enter target directory path",
+  "hint": "Tip: Paths starting with / indicate root directory, e.g. /photos/2024/",
+  "hintMobile": "Tip: Paths starting with / indicate root directory",
+  "selectDirectory": "Select Directory",
+  "cancel": "Cancel",
+  "confirm": "OK",
+  "retry": "Retry",
+  "authFailed": "Authentication failed, please log in again",
+  "serverError": "Server error, please try again later",
+  "loadTreeFailed": "Failed to load directory tree, please check network connection"
+}

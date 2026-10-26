@@ -1,0 +1,15 @@
+{
+  "uploadFileList": "上传文件列表",
+  "fileNameCol": "文件名",
+  "filePreview": "文件预览",
+  "uploadTimeCol": "上传时间",
+  "ipAddress": "IP地址",
+  "address": "地址",
+  "uploadCount": "上传次数",
+  "allowUpload": "允许上传",
+  "allow": "允许",
+  "deny": "禁止",
+  "loadMore": "加载更多",
+  "loadError": "加载更多数据时出错，请检查网络连接",
+  "syncError": "同步数据时出错，请检查网络连接"
+}

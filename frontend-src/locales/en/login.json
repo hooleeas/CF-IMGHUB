@@ -1,0 +1,17 @@
+{
+  "title": "Login to {owner} ImgHub",
+  "adminTitle": "Admin Login",
+  "password": "Password",
+  "username": "Username",
+  "passwordPlaceholder": "Enter auth code",
+  "usernamePlaceholder": "Enter username",
+  "adminPasswordPlaceholder": "Enter password",
+  "submit": "Login",
+  "success": "Login successful",
+  "failed": "Login failed, please check your password",
+  "adminFailed": "Invalid username or password",
+  "serverError": "Server error",
+  "systemError": "System error",
+  "authRequired": "Please authenticate first!",
+  "authFailed": "Authentication failed!"
+}

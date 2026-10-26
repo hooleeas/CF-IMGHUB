@@ -1,0 +1,21 @@
+{
+  "accessStatus": "Access Status",
+  "normal": "Normal",
+  "blocked": "Blocked",
+  "blackWhiteList": "Black/White List",
+  "whiteList": "Whitelist",
+  "blackList": "Blacklist",
+  "notSet": "Not Set",
+  "reviewResult": "Review Result",
+  "teenContent": "12+ Content",
+  "adultContent": "Adult Content",
+  "fileType": "File Type",
+  "image": "Image",
+  "video": "Video",
+  "audio": "Audio",
+  "other": "Other",
+  "channelType": "Channel Type",
+  "externalLink": "External Link",
+  "channelName": "Channel Name",
+  "clearFilters": "Clear Filters"
+}

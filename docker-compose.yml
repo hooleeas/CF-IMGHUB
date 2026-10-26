@@ -1,0 +1,11 @@
+name: cf-imghub
+
+services:
+  cf-imghub:
+    image: ghcr.io/hooleeas/cf-imghub:latest
+    container_name: cf-imghub
+    ports:
+      - "7654:8080"
+    volumes:
+      - ./data:/app/data
+    restart: always

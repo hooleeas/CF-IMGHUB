@@ -1,0 +1,102 @@
+// API Token权限验证工具函数
+import { getTokenData } from './apiTokenStore.js';
+import { isExpired } from './tokenExpiration.js';
+import { getDatabase } from '../databaseAdapter.js';
+
+/**
+ * 验证API Token权限
+ * @param {Request} request - 请求对象
+ * @param {Object} db - 数据库适配器
+ * @param {string} requiredPermission - 需要的权限 ('upload', 'delete', 'list')
+ * @returns {Promise<{valid: boolean, error?: string}>}
+ */
+export async function validateApiToken(request, db, requiredPermission) {
+    const authHeader = request.headers.get('Authorization');
+    
+    if (!authHeader) {
+        return { valid: false, error: '缺少Authorization头' };
+    }
+
+    let token;
+    
+    // 支持两种格式: "Bearer token" 或 "token"
+    if (authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+    } else {
+        token = authHeader;
+    }
+
+    if (!token) {
+        return { valid: false, error: '无效的Token格式' };
+    }
+
+    // 获取完整Token数据
+    const tokenData = await getTokenData(db, token);
+    
+    if (!tokenData) {
+        return { valid: false, error: '无效的Token' };
+    }
+
+    // Only WebDAV's private internal credential remains supported; public
+    // user-managed API tokens were retired with the security settings panel.
+    if (tokenData.type !== 'internal') {
+        return { valid: false, error: 'API Token 功能已停用' };
+    }
+
+    // 检查Token是否已过期
+    if (isExpired(tokenData.expiresAt)) {
+        return { valid: false, error: 'Token 已过期' };
+    }
+
+    // 检查权限，如果不需要特定权限（requiredPermission为null），则只要token有效就通过
+    if (requiredPermission !== null && !tokenData.permissions.includes(requiredPermission)) {
+        return { valid: false, error: `缺少${requiredPermission}权限` };
+    }
+
+    return { valid: true };
+}
+
+/**
+ * 从请求中提取Token信息
+ * @param {Request} request - 请求对象
+ * @param {KVNamespace} kv - KV存储
+ * @returns {Promise<object|null>} Token信息或null
+ */
+export async function getTokenInfo(request, kv) {
+    const authHeader = request.headers.get('Authorization');
+    
+    if (!authHeader) {
+        return null;
+    }
+
+    let token;
+    
+    if (authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+    } else {
+        token = authHeader;
+    }
+
+    if (!token) {
+        return null;
+    }
+
+    // 从数据库适配器读取，以兼容大小写迁移后的系统配置。
+    const settingsStr = await getDatabase({ KV: kv }).get('manage@sysConfig@security');
+    const settings = settingsStr ? JSON.parse(settingsStr) : {};
+    const tokens = settings.apiTokens?.tokens || {};
+    
+    // 查找匹配的token
+    for (const tokenId in tokens) {
+        if (tokens[tokenId].token === token) {
+            const t = tokens[tokenId];
+            return {
+                ...t,
+                expiresAt: t.expiresAt ?? null,
+                autoDelete: t.autoDelete ?? false
+            };
+        }
+    }
+    
+    return null;
+}

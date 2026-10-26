@@ -1,0 +1,20 @@
+{
+  "searchPlaceholder": "Search file name or #page",
+  "fileCount": "{count} files",
+  "loading": "Loading...",
+  "retry": "Retry",
+  "creditText": "Gallery code contributed by LinJiang",
+  "loadingMore": "Loading...",
+  "allLoaded": "All loaded",
+  "creditLink": "LinJiang",
+  "browseDisabled": "Public browsing is not enabled",
+  "directoryNotAllowed": "This directory is not open for public access",
+  "accessDenied": "Access denied",
+  "loadFailed": "Load failed, please retry",
+  "rootDirectory": "Root",
+  "copyLink": "Copy Link",
+  "copied": "Copied",
+  "downloadBtn": "Download",
+  "swipeHint": "← Swipe to navigate →",
+  "rotate90": "Rotate 90°"
+}

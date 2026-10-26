@@ -1,0 +1,15 @@
+{
+  "title": "移动文件",
+  "batchTitle": "批量移动文件",
+  "targetDirectory": "目标目录",
+  "targetPlaceholder": "请输入目标目录路径",
+  "hint": "提示：路径以 / 开头表示根目录，如 /photos/2024/",
+  "hintMobile": "提示：路径以 / 开头表示根目录",
+  "selectDirectory": "选择目录",
+  "cancel": "取消",
+  "confirm": "确定",
+  "retry": "重试",
+  "authFailed": "认证失败，请重新登录",
+  "serverError": "服务器错误，请稍后重试",
+  "loadTreeFailed": "加载目录树失败，请检查网络连接"
+}

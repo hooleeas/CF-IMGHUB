@@ -1,0 +1,893 @@
+:root {
+  --UI-RADIUS: 12px;
+}
+
+#themeToggle,
+.toggle-dark,
+.toggle-dark-button,
+.theme-toggle-btn {
+  display: none !important;
+}
+
+.el-dialog.channel-dialog .channel-name-form-item > .el-form-item__label::before {
+  display: none !important;
+}
+
+.ui-button,
+.button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--UI-RADIUS);
+  font: inherit;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.ui-button:hover,
+.button:hover {
+  transform: translateY(-1px);
+}
+
+.ui-button-primary,
+.button-black {
+  border-color: #2f3338;
+  color: #fff;
+  background: #2f3338;
+}
+
+.ui-button-secondary,
+.button-white {
+  border-color: #c8c8c0;
+  color: #222;
+  background: #fff;
+}
+
+.ui-button-danger,
+.button-red {
+  border-color: #dc3545;
+  color: #fff;
+  background: #dc3545;
+}
+
+.ui-expand-toggle[aria-expanded="true"] {
+  border-color: #2e9b61;
+}
+
+.ui-link-box:focus-visible,
+.ui-button:focus-visible,
+.button:focus-visible {
+  outline: 3px solid rgba(46, 155, 97, 0.38);
+  outline-offset: 2px;
+}
+
+.home-top-actions {
+  position: fixed;
+  z-index: 2000;
+  top: 24px;
+  right: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  max-width: calc(100vw - 32px);
+}
+
+.home-top-actions .upload-method-button,
+.home-top-actions .quick-toolbar-button,
+.home-top-actions .home-menu-action {
+  position: static !important;
+  display: inline-flex !important;
+  flex: 0 0 40px;
+  width: 40px !important;
+  height: 40px !important;
+  min-height: 40px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(75, 104, 88, 0.18) !important;
+  border-radius: 12px !important;
+  color: #2679c8 !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+  box-shadow: 0 2px 7px rgba(31, 61, 45, 0.16) !important;
+  cursor: pointer;
+  transition: background-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.home-top-actions .home-menu-action svg {
+  width: 16px;
+  height: 16px;
+  margin: 0 !important;
+}
+
+.text-language-icon {
+  position: relative;
+  display: block;
+  width: 21px;
+  height: 20px;
+  color: inherit;
+  font-family: ui-sans-serif, system-ui, sans-serif !important;
+  line-height: 1;
+}
+
+.text-language-icon-primary {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-size: 16px;
+  line-height: 16px;
+  font-weight: 700;
+}
+
+.text-language-icon-secondary {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  font-size: 10px;
+  line-height: 10px;
+  font-weight: 700;
+}
+
+.home-top-actions .home-menu-action,
+.language-switcher,
+.text-language-icon {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.home-top-actions .upload-method-button:hover,
+.home-top-actions .quick-toolbar-button:hover {
+  background: #fff !important;
+  box-shadow: 0 3px 9px rgba(31, 61, 45, 0.2) !important;
+  transform: translateY(-1px);
+}
+
+.home-top-actions .quick-toolbar-icon,
+.home-top-actions .upload-method-icon {
+  margin: 0;
+}
+
+.home-top-actions .home-history-button .quick-toolbar-icon,
+.home-top-actions .home-history-button svg,
+.home-top-actions .home-history-button i {
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  min-height: 24px !important;
+  font-size: 24px !important;
+  stroke-width: 2.2 !important;
+}
+
+.client-settings-backdrop {
+  position: fixed;
+  z-index: 3000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 20px;
+  background: rgba(15, 24, 19, 0.42);
+  backdrop-filter: blur(5px);
+}
+
+.client-settings-dialog {
+  box-sizing: border-box;
+  width: min(100%, 680px);
+  max-height: min(88vh, 820px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid rgba(100, 112, 132, 0.18);
+  border-radius: 22px;
+  color: #202124;
+  background: #fff;
+  box-shadow: 0 22px 75px rgba(0, 0, 0, 0.24);
+  text-align: left;
+}
+
+.client-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.client-settings-header {
+  margin-bottom: 20px;
+}
+
+.client-settings-header h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.client-settings-upload-settings {
+  box-sizing: border-box;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(100, 112, 132, 0.18);
+  border-radius: 14px;
+  background: #f8faf9;
+}
+
+.client-settings-upload-settings h3 {
+  margin: 0 0 8px;
+  color: inherit;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.client-settings-upload-settings > .client-settings-save {
+  display: flex !important;
+  margin: 16px 0 0 auto !important;
+}
+
+.client-settings-upload-settings .client-settings-save {
+  display: flex !important;
+  margin: 16px 0 0 auto !important;
+}
+
+.client-settings-section-save-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.client-settings-section-message {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  color: #246f4b;
+}
+
+.client-settings-section-message.is-error {
+  color: #c62828;
+}
+
+.client-settings-close,
+.client-settings-save {
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 1px solid rgba(42, 93, 63, 0.2);
+  border-radius: 10px;
+  color: inherit;
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.client-settings-close {
+  width: 40px;
+  padding: 0;
+  font-size: 25px;
+}
+
+.client-settings-fields {
+  display: grid;
+  gap: 0;
+}
+
+.client-settings-field {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1.3fr);
+  align-items: center;
+  gap: 16px;
+  min-height: 48px;
+  padding: 12px 2px;
+  border: 0;
+  border-bottom: 1px solid rgba(100, 112, 132, 0.16);
+  border-radius: 0;
+  background: transparent;
+}
+
+.client-settings-field:first-child {
+  border-top: 1px solid rgba(100, 112, 132, 0.16);
+}
+
+.client-settings-label {
+  font-weight: 600;
+  text-align: left;
+}
+
+.admin-default-upload-channel-panel .client-settings-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 0;
+  row-gap: 0;
+  width: 100%;
+}
+
+.admin-default-upload-channel-panel .client-settings-field {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  min-height: 0;
+  padding: 16px;
+  border: 0;
+  background: transparent;
+}
+
+.admin-default-upload-channel-panel .client-settings-field:nth-child(odd) {
+  border-right: 1px solid rgba(100, 112, 132, 0.2);
+}
+
+.admin-default-upload-channel-panel .client-settings-field:nth-child(-n + 2) {
+  border-bottom: 1px solid rgba(100, 112, 132, 0.2);
+}
+
+.admin-default-upload-channel-panel .client-settings-field:first-child {
+  border-top: 0;
+}
+
+.admin-default-upload-channel-panel .client-settings-field .client-settings-checkbox,
+.admin-default-upload-channel-panel .client-settings-field .client-settings-toggle {
+  justify-self: start;
+}
+
+.admin-default-upload-channel-panel .client-settings-field .client-settings-input,
+.admin-default-upload-channel-panel .client-settings-field .client-settings-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.client-settings-select,
+.client-settings-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid #cbd5ce;
+  border-radius: 10px;
+  color: inherit;
+  background: #fff;
+  font: inherit;
+}
+
+.client-settings-checkbox {
+  justify-self: start;
+  width: 18px;
+  height: 18px;
+  accent-color: #2e9b61;
+}
+
+.client-settings-toggle {
+  position: relative;
+  justify-self: start;
+  width: 46px;
+  height: 26px;
+  margin: 0;
+  border: 0;
+  border-radius: 13px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: #aab4ad;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.client-settings-toggle::before {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  content: "";
+  transition: transform 0.15s ease;
+}
+
+.client-settings-toggle:checked {
+  background: #2e9b61;
+}
+
+.client-settings-toggle:checked::before {
+  transform: translateX(20px);
+}
+
+.client-settings-toggle:focus-visible {
+  outline: 3px solid rgba(46, 155, 97, 0.3);
+  outline-offset: 2px;
+}
+
+.client-settings-select:disabled {
+  opacity: 0.55;
+}
+
+.client-settings-save {
+  border-color: #2f3338;
+  color: #fff;
+  background: #2f3338;
+  font-weight: 700;
+}
+
+.client-settings-save:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.upload-home .quick-toolbar,
+.upload-home .quick-toolbar-actions {
+  display: none !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  .client-settings-dialog {
+    border-color: #3c3c3c;
+    color: #f1f1f1;
+    background: #202020;
+  }
+
+  .client-settings-close,
+  .client-settings-select,
+  .client-settings-input {
+    border-color: rgba(212, 231, 218, 0.2);
+    color: #f1f5f2;
+    background-color: #111815;
+  }
+
+  :root:not(.light):not(.dark) .client-settings-upload-settings {
+    border-color: rgba(212, 231, 218, 0.16);
+    background: #292929;
+  }
+
+  .client-settings-toggle:not(:checked) {
+    background: #59635c;
+  }
+
+  .client-settings-select option {
+    color: #f1f5f2;
+    background: #111815;
+  }
+
+  .client-settings-save {
+    border-color: #e8f1ea;
+    color: #17221a;
+    background: #e8f1ea;
+  }
+}
+
+html.dark .client-settings-dialog {
+  border-color: #3c3c3c;
+  color: #f1f1f1;
+  background: #202020;
+}
+
+html.dark .client-settings-field {
+  border-bottom-color: rgba(212, 231, 218, 0.16);
+  background: transparent;
+}
+
+html.dark .client-settings-field:first-child {
+  border-top-color: rgba(212, 231, 218, 0.16);
+}
+
+html.dark .client-settings-close,
+html.dark .client-settings-select,
+html.dark .client-settings-input {
+  border-color: rgba(212, 231, 218, 0.2);
+  color: #f1f5f2;
+  background-color: #111815;
+}
+
+html.dark .client-settings-select {
+  color-scheme: dark;
+}
+
+html.dark .client-settings-upload-settings {
+  border-color: rgba(212, 231, 218, 0.16);
+  background: #292929;
+}
+
+html.dark .client-settings-toggle:not(:checked) {
+  background: #59635c;
+}
+
+html.dark .client-settings-select option {
+  color: #f1f5f2;
+  background: #111815;
+}
+
+html.dark .client-settings-save {
+  border-color: #e8f1ea;
+  color: #17221a;
+  background: #e8f1ea;
+}
+
+@media (max-width: 600px) {
+  .client-settings-dialog {
+    max-height: 92vh;
+    padding: 18px;
+    border-radius: 18px;
+  }
+
+  .client-settings-field {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .admin-default-upload-channel-panel .client-settings-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-default-upload-channel-panel .client-settings-field:nth-child(odd) {
+    border-right: 0;
+  }
+
+  .admin-default-upload-channel-panel .client-settings-field:not(:last-child) {
+    border-bottom: 1px solid rgba(100, 112, 132, 0.2);
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .home-top-actions .upload-method-button,
+  .home-top-actions .quick-toolbar-button {
+    border-color: rgba(212, 231, 218, 0.2) !important;
+    color: #a9d6ff !important;
+    background: rgba(28, 37, 32, 0.88) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+  }
+
+  .home-top-actions .upload-method-button:hover,
+  .home-top-actions .quick-toolbar-button:hover {
+    background: #28362e !important;
+  }
+}
+
+.home-top-actions .home-menu-action {
+  box-sizing: border-box;
+  position: static !important;
+  display: inline-flex !important;
+  flex: 0 0 36px;
+  width: 36px !important;
+  height: 36px !important;
+  min-height: 36px;
+  margin: 0;
+  padding: 0 !important;
+  list-style: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #c8c8c0 !important;
+  border-radius: 8px !important;
+  color: #222 !important;
+  background: var(--UI-BUTTON-SECONDARY, #fff) !important;
+  box-shadow: none !important;
+  transition: background-color 0.14s ease, border-color 0.14s ease,
+    color 0.14s ease, outline-color 0.14s ease, transform 0.08s ease !important;
+}
+
+@media (hover: hover) {
+  .home-top-actions .home-menu-action:hover {
+    border-color: #8fba99 !important;
+    color: #285c37 !important;
+    background: #e5f2e8 !important;
+    transform: scale(1.025) !important;
+    box-shadow: 0 5px 12px rgba(23, 43, 77, 0.19) !important;
+  }
+}
+
+html.dark .home-top-actions .home-menu-action {
+  border-color: #77828e !important;
+  color: #f1f1f1 !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light):not(.dark) .home-top-actions .home-menu-action {
+    border-color: #77828e !important;
+    color: #f1f1f1 !important;
+  }
+}
+
+@media (hover: hover) {
+  html.dark .home-top-actions .home-menu-action:hover {
+    border-color: #86efac !important;
+    color: #10251a !important;
+    background: #a7f3d0 !important;
+    transform: scale(1.045) !important;
+    box-shadow: 0 0 0 3px rgba(167, 243, 208, 0.18),
+      0 6px 18px rgba(0, 0, 0, 0.45) !important;
+  }
+}
+
+@media (hover: hover) and (prefers-color-scheme: dark) {
+  :root:not(.light):not(.dark) .home-top-actions .home-menu-action:hover {
+    border-color: #86efac !important;
+    color: #10251a !important;
+    background: #a7f3d0 !important;
+    transform: scale(1.045) !important;
+    box-shadow: 0 0 0 3px rgba(167, 243, 208, 0.18),
+      0 6px 18px rgba(0, 0, 0, 0.45) !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .home-top-actions {
+    top: 12px;
+    right: 12px;
+    gap: 6px;
+  }
+
+  .home-top-actions .upload-method-button,
+  .home-top-actions .quick-toolbar-button {
+    flex-basis: 36px;
+    width: 36px !important;
+    height: 36px !important;
+    min-height: 36px;
+    border-radius: 10px !important;
+  }
+
+  .home-top-actions .home-history-button .quick-toolbar-icon,
+  .home-top-actions .home-history-button svg,
+  .home-top-actions .home-history-button i {
+    width: 26px !important;
+    height: 26px !important;
+    min-width: 26px !important;
+    min-height: 26px !important;
+    font-size: 26px !important;
+  }
+}
+
+.admin-settings-modal-backdrop {
+  position: fixed;
+  z-index: 3100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 20px;
+  background: rgba(15, 24, 19, 0.46);
+  backdrop-filter: blur(5px);
+}
+
+.admin-settings-modal {
+  box-sizing: border-box;
+  width: min(100%, 560px);
+  max-height: min(88vh, 760px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid rgba(42, 93, 63, 0.15);
+  border-radius: 22px;
+  color: #202722;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 22px 75px rgba(0, 0, 0, 0.24);
+  text-align: left;
+}
+
+.admin-settings-modal-header,
+.admin-settings-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-settings-modal-header {
+  margin-bottom: 20px;
+}
+
+.admin-settings-modal-header h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.admin-settings-modal-form {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-settings-modal-form label {
+  display: grid;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.admin-settings-modal-form input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid #cbd5ce;
+  border-radius: 10px;
+  color: inherit;
+  background: #fff;
+  font: inherit;
+}
+
+.admin-settings-modal-form small {
+  color: #68746d;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.admin-settings-modal-message {
+  min-height: 1.4em;
+  margin: 0;
+  color: #246f4b;
+}
+
+.admin-settings-modal-message.is-error {
+  color: #c62828;
+}
+
+.admin-settings-modal-footer {
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.admin-settings-modal-close {
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 1px solid rgba(42, 93, 63, 0.2);
+  border-radius: 10px;
+  color: inherit;
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.admin-settings-modal-close {
+  width: 40px;
+  padding: 0;
+  font-size: 25px;
+}
+
+.admin-settings-modal-save:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+@media (prefers-color-scheme: dark) {
+  .admin-settings-modal {
+    border-color: rgba(212, 231, 218, 0.18);
+    color: #f1f5f2;
+    background: rgba(24, 31, 27, 0.98);
+  }
+
+  .admin-settings-modal-form input,
+  .admin-settings-modal-close {
+    border-color: rgba(212, 231, 218, 0.2);
+    color: #f1f5f2;
+    background: #111815;
+  }
+
+  .admin-settings-modal-form small {
+    color: #a0aaa3;
+  }
+
+}
+
+html.dark .admin-settings-modal {
+  border-color: rgba(212, 231, 218, 0.18);
+  color: #f1f5f2;
+  background: rgba(24, 31, 27, 0.98);
+}
+
+html.dark .admin-settings-modal-form input,
+html.dark .admin-settings-modal-close {
+  border-color: rgba(212, 231, 218, 0.2);
+  color: #f1f5f2;
+  background: #111815;
+}
+
+html.dark .admin-settings-modal-form small {
+  color: #a0aaa3;
+}
+
+@media (max-width: 600px) {
+  .admin-settings-modal {
+    max-height: 92vh;
+    padding: 18px;
+    border-radius: 18px;
+  }
+}
+
+html.modal-scroll-locked,
+body.modal-scroll-locked {
+  overflow: hidden !important;
+  overscroll-behavior: none;
+}
+
+.ui-modal-backdrop,
+.client-settings-backdrop,
+.admin-settings-modal-backdrop,
+.el-overlay,
+.el-message-box__wrapper,
+.el-image-viewer__wrapper,
+.el-drawer__container,
+#admin-backup-root > .overlay.open {
+  backdrop-filter: blur(5px) !important;
+  -webkit-backdrop-filter: blur(5px) !important;
+  animation: none !important;
+  transition: none !important;
+}
+
+.ui-modal,
+.client-settings-dialog,
+.admin-settings-modal,
+.el-dialog,
+.el-message-box,
+.el-drawer {
+  animation: none !important;
+  transition: none !important;
+  transform: none !important;
+}
+
+.upload-home .upload-card-glow {
+  display: none !important;
+}
+
+.upload-home .el-upload-dragger {
+  height: clamp(220px, 32vh, 340px) !important;
+  border: 2px dashed #cbd5ce !important;
+  border-radius: 14px !important;
+  opacity: 1 !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transition: border-color 0.15s ease, background-color 0.15s ease !important;
+}
+
+.upload-home .el-upload-dragger::before,
+.upload-home .el-upload-dragger::after {
+  display: none !important;
+  content: none !important;
+  animation: none !important;
+}
+
+.upload-home .el-upload-dragger:hover,
+.upload-home .el-upload-dragger.is-dragover,
+.upload-home .upload-card:hover .el-upload-dragger {
+  opacity: 1 !important;
+  border-color: #2e9b61 !important;
+  background: rgba(46, 155, 97, 0.06) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.upload-home .el-upload-dragger .el-icon--upload {
+  display: none !important;
+}
+
+.upload-home .el-upload-dragger .el-upload__text {
+  position: relative;
+  z-index: 1;
+  color: #39443d;
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.upload-home .el-upload-dragger .el-upload__text em {
+  color: #246f4b;
+  font-style: normal;
+  font-weight: 650;
+}
+
+html.dark .upload-home .el-upload-dragger {
+  border-color: rgba(212, 231, 218, 0.28) !important;
+  background: rgba(18, 27, 21, 0.82) !important;
+}
+
+html.dark .upload-home .el-upload-dragger:hover,
+html.dark .upload-home .el-upload-dragger.is-dragover,
+html.dark .upload-home .upload-card:hover .el-upload-dragger {
+  border-color: #4ade80 !important;
+  background: rgba(74, 222, 128, 0.08) !important;
+}
+
+html.dark .upload-home .el-upload-dragger .el-upload__text {
+  color: #d8e2dc;
+}
+
+html.dark .upload-home .el-upload-dragger .el-upload__text em {
+  color: #86efac;
+}

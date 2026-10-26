@@ -1,0 +1,7 @@
+{
+  "selectDirectory": "Select Directory",
+  "retry": "Retry",
+  "authFailed": "Authentication failed, please log in again",
+  "serverError": "Server error, please try again later",
+  "loadFailed": "Failed to load directory tree, please check network connection"
+}

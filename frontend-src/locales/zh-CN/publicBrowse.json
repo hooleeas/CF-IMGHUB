@@ -1,0 +1,20 @@
+{
+  "searchPlaceholder": "搜索文件名 或 #页码",
+  "fileCount": "{count} 个文件",
+  "loading": "加载中...",
+  "retry": "重试",
+  "creditText": "该图库由林酱贡献代码",
+  "loadingMore": "加载中...",
+  "allLoaded": "已加载全部",
+  "creditLink": "林酱贡献",
+  "browseDisabled": "公开浏览功能未启用",
+  "directoryNotAllowed": "该目录不允许公开访问",
+  "accessDenied": "访问被拒绝",
+  "loadFailed": "加载失败，请重试",
+  "rootDirectory": "根目录",
+  "copyLink": "复制链接",
+  "copied": "已复制",
+  "downloadBtn": "下载",
+  "swipeHint": "← 滑动切换 →",
+  "rotate90": "旋转90°"
+}

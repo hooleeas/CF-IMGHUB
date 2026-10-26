@@ -1,0 +1,7 @@
+{
+  "selectDirectory": "选择目录",
+  "retry": "重试",
+  "authFailed": "认证失败，请重新登录",
+  "serverError": "服务器错误，请稍后重试",
+  "loadFailed": "加载目录树失败，请检查网络连接"
+}

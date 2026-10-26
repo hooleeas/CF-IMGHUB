@@ -1,0 +1,19 @@
+{
+  "clientSettings": "Client Settings",
+  "settingLabels": {
+    "defaultChannelId": "Upload Channel",
+    "defaultConvertToWebp": "Convert to WebP",
+    "defaultCustomerCompress": "Enable Compression",
+    "defaultCompressBar": "Compression Threshold (MB)",
+    "defaultCompressQuality": "Compression Target (MB)"
+  },
+  "settingTooltips": {},
+  "channelTypes": {
+    "telegram": "Telegram",
+    "cfr2": "Cloudflare R2",
+    "s3": "S3",
+    "discord": "Discord",
+    "huggingface": "HuggingFace",
+    "webdav": "WebDAV"
+  }
+}
