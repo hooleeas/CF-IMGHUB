@@ -30,6 +30,7 @@ const DEFAULT_OTHER_SETTINGS = {
         internalTokenId: '',
     },
 };
+const ALLOWED_OTHER_SETTINGS = new Set(Object.keys(DEFAULT_OTHER_SETTINGS));
 const CHANNEL_TYPES = {
     telegram: 'Telegram',
     cfr2: 'R2',
@@ -153,6 +154,12 @@ function seedBaseSystemConfig(config) {
     const others = config.others && typeof config.others === 'object' && !Array.isArray(config.others)
         ? config.others
         : (config.others = {});
+    for (const key of Object.keys(others)) {
+        if (!ALLOWED_OTHER_SETTINGS.has(key)) {
+            delete others[key];
+            changed = true;
+        }
+    }
     for (const [key, defaults] of Object.entries(DEFAULT_OTHER_SETTINGS)) {
         const current = others[key] && typeof others[key] === 'object' && !Array.isArray(others[key])
             ? others[key]
@@ -173,7 +180,9 @@ function seedBaseSystemConfig(config) {
                 page[field] = setting.value;
             }
             changed = true;
-        } else {
+        } else if (['defaultUploadChannel', 'defaultChannelName'].includes(setting?.id)) {
+            // Used once to map the old channel name to its ID, then omitted
+            // from the refactored CONFIG document.
             remainingSettings.push(setting);
         }
     }
@@ -185,6 +194,20 @@ function seedBaseSystemConfig(config) {
     } else if (Object.hasOwn(page, 'config')) {
         delete page.config;
         changed = true;
+    }
+
+    const securityUpload = config.security.upload;
+    if (securityUpload && typeof securityUpload === 'object' && !Array.isArray(securityUpload)) {
+        for (const key of ['moderate', 'ipQuery']) {
+            if (Object.hasOwn(securityUpload, key)) {
+                delete securityUpload[key];
+                changed = true;
+            }
+        }
+        if (Object.keys(securityUpload).length === 0) {
+            delete config.security.upload;
+            changed = true;
+        }
     }
     for (const [field, value] of Object.entries(DEFAULT_PAGE_SETTINGS)) {
         if (!Object.hasOwn(page, field)) {
@@ -327,10 +350,6 @@ function toFlatSystemConfig(config) {
         webDAV: others.webDAV || DEFAULT_OTHER_SETTINGS.webDAV,
     };
     if (Object.keys(security).length) flat.security = security;
-    const otherSettings = Object.fromEntries(Object.entries(others).filter(([key]) =>
-        !Object.hasOwn(DEFAULT_OTHER_SETTINGS, key)
-    ));
-    if (Object.keys(otherSettings).length) flat.others = otherSettings;
     return flat;
 }
 

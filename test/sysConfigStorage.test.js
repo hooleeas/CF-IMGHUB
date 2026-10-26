@@ -35,25 +35,37 @@ function createKV(initialEntries = []) {
 function createD1Binding(rows) {
     return {
         prepare(sql) {
+            const first = async (values = []) => {
+                if (sql.startsWith('SELECT key FROM settings')) {
+                    const key = [...rows.keys()].find((name) => name === 'CONFIG' || name.startsWith('manage@sysConfig@') || name.startsWith('MANAGE@SYSCONFIG@'));
+                    return key ? { key } : null;
+                }
+                if (sql.startsWith('SELECT id FROM files')) return null;
+                if (sql.startsWith('SELECT value FROM settings')) {
+                    const value = rows.get(values[0]);
+                    return value === undefined ? null : { value };
+                }
+                return null;
+            };
+            const run = async (values = []) => {
+                if (sql.startsWith('INSERT OR REPLACE INTO settings')) {
+                    rows.set(values[0], values[1]);
+                } else if (sql.startsWith('DELETE FROM settings')) {
+                    rows.delete(values[0]);
+                }
+                return {};
+            };
             return {
                 bind(...values) {
                     return {
-                        async first() {
-                            if (!sql.startsWith('SELECT value FROM settings')) {
-                                return null;
-                            }
-                            const value = rows.get(values[0]);
-                            return value === undefined ? null : { value };
-                        },
-                        async run() {
-                            if (sql.startsWith('INSERT OR REPLACE INTO settings')) {
-                                rows.set(values[0], values[1]);
-                            } else if (sql.startsWith('DELETE FROM settings')) {
-                                rows.delete(values[0]);
-                            }
-                            return {};
-                        },
+                        first: () => first(values),
+                        run: () => run(values),
                     };
+                },
+                first: () => first(),
+                run: () => run(),
+                async all() {
+                    return { results: sql.startsWith('PRAGMA table_info(files)') ? [{ name: 'tags' }] : [] };
                 },
             };
         },
@@ -180,6 +192,81 @@ test('round-trips the flat site, admin, upload, and channel record shape', () =>
         type: 'cfr2',
     }]);
     assert.deepEqual(JSON.parse(encodeSystemConfigValue(decoded)), stored);
+});
+
+test('removes unrelated legacy custom config while retaining storage settings', async () => {
+    const kv = createKV([['CONFIG', JSON.stringify({
+        SITE: { NAME: 'cf-imghub', ADMIN_PATH: 'admin' },
+        ADMIN: { USERNAME: 'owner', PASSWORD: 'password-hash' },
+        UPLOAD: {
+            SELECT_CHANNEL: 'ABCDE',
+            CONVERT_TO_WEBP: true,
+            COMPRESS: true,
+            COMPRESS_BAR: 5,
+            COMPRESS_QUALITY: 4,
+        },
+        CHANNELS: [{ ID: 'ABCDE', CHANNEL: 'S3', NAME: 'Archive', ENABLED: true }],
+        SECURITY: {
+            UPLOAD: {
+                MODERATE: { ENABLED: true },
+                IP_QUERY: { ENABLED: true },
+            },
+        },
+        OTHERS: {
+            TELEMETRY: { ENABLED: true },
+            RANDOM_IMAGE_API: { ENABLED: true },
+            PUBLIC_BROWSE: { ENABLED: true },
+            CUSTOM_WIDGET: { ENABLED: true },
+            CLOUDFLARE_API_TOKEN: { CF_ZONE_ID: 'zone-id', CF_EMAIL: '', CF_API_KEY: 'token' },
+            WEB_DAV: { ENABLED: true, USERNAME: 'dav-user', PASSWORD: 'dav-password' },
+        },
+    })]]);
+    const db = getDatabase({ KV: kv });
+
+    const settings = JSON.parse(await db.get('manage@sysConfig@others'));
+    const stored = JSON.parse(kv.values.get('CONFIG'));
+
+    assert.deepEqual(Object.keys(settings).sort(), ['cloudflareApiToken', 'webDAV']);
+    assert.equal(settings.cloudflareApiToken.CF_ZONE_ID, 'zone-id');
+    assert.equal(settings.webDAV.username, 'dav-user');
+    assert.equal(stored.SECURITY, undefined);
+    assert.equal(stored.OTHERS, undefined);
+    assert.equal(stored.CHANNELS[0].NAME, 'Archive');
+    assert.equal(stored.UPLOAD.SELECT_CHANNEL, 'ABCDE');
+});
+
+test('cleans unrelated custom values from the refactored D1 CONFIG record', async () => {
+    const rows = new Map([['CONFIG', JSON.stringify({
+        SITE: { NAME: 'cf-imghub', ADMIN_PATH: 'admin' },
+        ADMIN: { USERNAME: 'owner', PASSWORD: 'password-hash' },
+        UPLOAD: {
+            SELECT_CHANNEL: 'ABCDE',
+            CONVERT_TO_WEBP: true,
+            COMPRESS: true,
+            COMPRESS_BAR: 5,
+            COMPRESS_QUALITY: 4,
+        },
+        CHANNELS: [{ ID: 'ABCDE', CHANNEL: 'S3', NAME: 'Archive', ENABLED: true }],
+        SECURITY: { UPLOAD: { MODERATE: { ENABLED: true }, IP_QUERY: { ENABLED: true } } },
+        OTHERS: {
+            TELEMETRY: { ENABLED: true },
+            RANDOM_IMAGE_API: { ENABLED: true },
+            PUBLIC_BROWSE: { ENABLED: true },
+            CUSTOM_WIDGET: { ENABLED: true },
+            CLOUDFLARE_API_TOKEN: { CF_ZONE_ID: 'zone-id', CF_EMAIL: '', CF_API_KEY: 'token' },
+        },
+    })]]);
+    const db = new D1Database(createD1Binding(rows));
+
+    const settings = JSON.parse(await db.get('manage@sysConfig@others'));
+    const stored = JSON.parse(rows.get('CONFIG'));
+
+    assert.equal(settings.cloudflareApiToken.CF_ZONE_ID, 'zone-id');
+    assert.equal(settings.telemetry, undefined);
+    assert.equal(stored.SECURITY, undefined);
+    assert.equal(stored.OTHERS, undefined);
+    assert.equal(stored.CHANNELS[0].NAME, 'Archive');
+    assert.equal(stored.UPLOAD.SELECT_CHANNEL, 'ABCDE');
 });
 
 test('migrates Cloudflare API Token and WebDAV from legacy OTHERS into CONFIG root', async () => {

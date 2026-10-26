@@ -13,35 +13,7 @@ function getAdminCredentials(config) {
 export async function onRequestGet({ env }) {
     const config = await fetchSecurityConfig(env, { throwOnError: true });
     const { username, password } = getAdminCredentials(config);
-    const db = getDatabase(env);
-    const settingsString = await db.get('manage@sysConfig@security');
-    const stored = settingsString ? JSON.parse(settingsString) : {};
     const userPassword = config.auth.user.authCode || '';
-    const ipQuery = stored.upload?.ipQuery || {};
-    config.upload = {
-        moderate: {
-            enabled: stored.upload?.moderate?.enabled ?? false,
-            channel: stored.upload?.moderate?.channel || 'moderatecontent.com',
-            moderateContentApiKey: stored.upload?.moderate?.moderateContentApiKey
-                || stored.upload?.moderate?.apiKey
-                || env.ModerateContentApiKey
-                || '',
-            nsfwApiPath: stored.upload?.moderate?.nsfwApiPath || '',
-        },
-        ipQuery: {
-            enabled: ipQuery.enabled ?? false,
-            channel: ipQuery.channel || 'customApi',
-            customApi: {
-                url: ipQuery.customApi?.url || '',
-                params: Array.isArray(ipQuery.customApi?.params) && ipQuery.customApi.params.length
-                    ? ipQuery.customApi.params.map((item) => ({ key: item?.key || '', value: item?.value || '' }))
-                    : [{ key: 'ip', value: '{ip}' }],
-                responseFields: Array.isArray(ipQuery.customApi?.responseFields)
-                    ? ipQuery.customApi.responseFields.map((item) => typeof item === 'string' ? item : item?.path || '')
-                    : [],
-            },
-        },
-    };
     config.auth.user._hasPassword = Boolean(userPassword);
     config.auth.user.authCode = '';
     config.auth.admin._hasPassword = Boolean(password);

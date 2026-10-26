@@ -2478,6 +2478,15 @@
       });
     });
 
+    // Element Plus teleports dropdown poppers to <body>, outside the app
+    // surfaces above. Remove retired native menu actions there as well.
+    document.querySelectorAll('[role="menuitem"], .el-dropdown-menu__item').forEach((ITEM) => {
+      const LABEL = (ITEM.textContent || ITEM.getAttribute('aria-label') || ITEM.title || '').trim();
+      if (/^(公告|查看公告|announcement|view announcement|退出登录|登出|登录|管理端登录|sign out|log out|sign in|admin login)$/i.test(LABEL)) {
+        ITEM.remove();
+      }
+    });
+
     document.querySelectorAll('#themeToggle, .toggle-dark, .toggle-dark-button, .theme-toggle-btn').forEach((CONTROL) => CONTROL.remove());
     document.querySelectorAll('[role="menuitem"], .el-dropdown-menu__item').forEach((ITEM) => {
       const LABEL = (ITEM.textContent || '').trim();

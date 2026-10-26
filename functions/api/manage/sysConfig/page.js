@@ -1,7 +1,7 @@
 import { getDatabase } from '../../../utils/databaseAdapter.js';
 import { getUploadConfig } from './upload.js';
-import enPageLocale from '../../../../frontend-src/locales/en/sysPage.json';
-import zhCNPageLocale from '../../../../frontend-src/locales/zh-CN/sysPage.json';
+import enPageLocale from '../../../../frontend-src/locales/en/sysPage.json' with { type: 'json' };
+import zhCNPageLocale from '../../../../frontend-src/locales/zh-CN/sysPage.json' with { type: 'json' };
 
 const PAGE_SETTING_FIELDS = {
     defaultChannelId: 'channelId',

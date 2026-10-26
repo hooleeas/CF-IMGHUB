@@ -27,13 +27,15 @@ export async function onRequest(context) {
 
     // POST保存设置
     if (request.method === 'POST') {
-        const body = await request.json()
-        const settings = body
-
-        // Retired settings must not be restored through stale clients.
-        delete settings.telemetry
-        delete settings.randomImageAPI
-        delete settings.publicBrowse
+        const body = await request.json();
+        const settings = {
+            cloudflareApiToken: body?.cloudflareApiToken && typeof body.cloudflareApiToken === 'object'
+                ? body.cloudflareApiToken
+                : {},
+            webDAV: body?.webDAV && typeof body.webDAV === 'object'
+                ? body.webDAV
+                : {},
+        };
 
         // WebDAV internal token 管理
         const webDAV = settings.webDAV || {};
