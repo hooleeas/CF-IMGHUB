@@ -14,6 +14,8 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { SqliteD1 } from './sqliteD1.js';
 import { LocalR2Storage } from './r2Storage.js';
 import { getSiteConfig } from '../../functions/utils/siteConfig.js';
+import { notFoundResponse } from '../../functions/utils/notFoundResponse.js';
+import { isHiddenLegacyAdminPath } from '../../functions/utils/adminPathRouting.js';
 
 const NativeResponse = globalThis.Response;
 
@@ -340,9 +342,8 @@ app.all('*', async (c, next) => {
 
     if (pathname === '/admin' || pathname === '/admin/') {
         const { adminPath } = await getSiteConfig(createEnv());
-        if (adminPath !== '/admin') {
-            url.pathname = adminPath;
-            return c.redirect(`${url.pathname}${url.search}`, 302);
+        if (isHiddenLegacyAdminPath(pathname, adminPath)) {
+            return notFoundResponse(c.req.raw);
         }
     }
 
@@ -396,11 +397,24 @@ app.all('/api/*', (c) => c.text('Not Found', 404));
 
 // 默认返回 index.html（SPA 支持）
 app.get('*', async (c) => {
-    const indexPath = join(ROOT_DIR, 'frontend-dist', 'index.html');
-    if (existsSync(indexPath)) {
-        const content = readFileSync(indexPath, 'utf8');
-        return c.html(content);
+    const acceptsHtml = c.req.header('Accept')?.includes('text/html');
+    const pathname = new URL(c.req.url).pathname.replace(/\/$/, '') || '/';
+    const { adminPath } = await getSiteConfig(createEnv());
+    const isKnownPage = pathname === '/'
+        || pathname === '/customerConfig'
+        || pathname === '/blockimg'
+        || pathname === '/whiteliston'
+        || pathname === '/admin'
+        || pathname === adminPath
+        || pathname === '/browse'
+        || pathname.startsWith('/browse/');
+
+    if (!isKnownPage && acceptsHtml && !pathname.split('/').at(-1)?.includes('.')) {
+        return notFoundResponse(c.req.raw);
     }
+
+    const indexPath = join(ROOT_DIR, 'frontend-dist', 'index.html');
+    if (isKnownPage && existsSync(indexPath)) return c.html(readFileSync(indexPath, 'utf8'));
     return c.text('Not Found', 404);
 });
 

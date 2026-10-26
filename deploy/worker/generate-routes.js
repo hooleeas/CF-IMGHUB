@@ -210,6 +210,8 @@ const output = `/**
 
 ${imports}
 import { getSiteConfig } from '../../functions/utils/siteConfig.js';
+import { notFoundResponse } from '../../functions/utils/notFoundResponse.js';
+import { isHiddenLegacyAdminPath } from '../../functions/utils/adminPathRouting.js';
 
 // ==================== 自动生成的路由表 ====================
 
@@ -394,9 +396,8 @@ export default {
 
         if (pathname === '/admin' || pathname === '/admin/') {
             const { adminPath } = await getSiteConfig(env);
-            if (adminPath !== '/admin') {
-                url.pathname = adminPath;
-                return Response.redirect(url, 302);
+            if (isHiddenLegacyAdminPath(pathname, adminPath)) {
+                return notFoundResponse(request);
             }
         }
 

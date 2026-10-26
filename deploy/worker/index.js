@@ -21,6 +21,7 @@ import * as apiManageBatchIndexChunk from '../../functions/api/manage/batch/inde
 import * as apiManageBatchIndexConfig from '../../functions/api/manage/batch/index/config.js';
 import * as apiManageBatchIndexFinalize from '../../functions/api/manage/batch/index/finalize.js';
 import * as apiManageBatchRestoreChunk from '../../functions/api/manage/batch/restore/chunk.js';
+import * as apiManageBatchKv from '../../functions/api/manage/batch/kv.js';
 import * as apiManageBatchList from '../../functions/api/manage/batch/list.js';
 import * as apiManageBatchSettings from '../../functions/api/manage/batch/settings.js';
 import * as apiManageCusConfigBlockip from '../../functions/api/manage/cusConfig/blockip.js';
@@ -28,6 +29,7 @@ import * as apiManageCusConfigBlockipList from '../../functions/api/manage/cusCo
 import * as apiManageCusConfigFiles from '../../functions/api/manage/cusConfig/files.js';
 import * as apiManageCusConfigList from '../../functions/api/manage/cusConfig/list.js';
 import * as apiManageCusConfigWhiteip from '../../functions/api/manage/cusConfig/whiteip.js';
+import * as apiManageSysConfigCheckChannel from '../../functions/api/manage/sysConfig/checkChannel.js';
 import * as apiManageSysConfigOthers from '../../functions/api/manage/sysConfig/others.js';
 import * as apiManageSysConfigPage from '../../functions/api/manage/sysConfig/page.js';
 import * as apiManageSysConfigSecurity from '../../functions/api/manage/sysConfig/security.js';
@@ -46,7 +48,6 @@ import * as uploadHuggingfaceCommitUpload from '../../functions/upload/huggingfa
 import * as uploadHuggingfaceCompleteMultipart from '../../functions/upload/huggingface/completeMultipart.js';
 import * as uploadHuggingfaceGetUploadUrl from '../../functions/upload/huggingface/getUploadUrl.js';
 import * as apiChannels from '../../functions/api/channels.js';
-import * as apiDirectoryTree from '../../functions/api/directoryTree.js';
 import * as apiFetchRes from '../../functions/api/fetchRes.js';
 import * as apiSiteConfig from '../../functions/api/siteConfig.js';
 import * as apiUserConfig from '../../functions/api/userConfig.js';
@@ -63,6 +64,8 @@ import * as davCatchAll from '../../functions/dav/[[path]].js';
 import * as fileCatchAll from '../../functions/file/[[path]].js';
 
 import { getSiteConfig } from '../../functions/utils/siteConfig.js';
+import { notFoundResponse } from '../../functions/utils/notFoundResponse.js';
+import { isHiddenLegacyAdminPath } from '../../functions/utils/adminPathRouting.js';
 
 // ==================== 自动生成的路由表 ====================
 
@@ -71,6 +74,7 @@ const routes = [
     { path: '/api/manage/batch/index/config', module: apiManageBatchIndexConfig, middlewares: [mw_root, mw_api, mw_api_manage] },
     { path: '/api/manage/batch/index/finalize', module: apiManageBatchIndexFinalize, middlewares: [mw_root, mw_api, mw_api_manage] },
     { path: '/api/manage/batch/restore/chunk', module: apiManageBatchRestoreChunk, middlewares: [mw_root, mw_api, mw_api_manage] },
+    { path: '/api/manage/batch/kv', module: apiManageBatchKv, middlewares: [mw_root, mw_api, mw_api_manage] },
     { path: '/api/manage/batch/list', module: apiManageBatchList, middlewares: [mw_root, mw_api, mw_api_manage] },
     { path: '/api/manage/batch/settings', module: apiManageBatchSettings, middlewares: [mw_root, mw_api, mw_api_manage] },
     { path: '/api/manage/cusConfig/blockip', module: apiManageCusConfigBlockip, middlewares: [mw_root, mw_api, mw_api_manage] },
@@ -78,6 +82,7 @@ const routes = [
     { path: '/api/manage/cusConfig/files', module: apiManageCusConfigFiles, middlewares: [mw_root, mw_api, mw_api_manage] },
     { path: '/api/manage/cusConfig/list', module: apiManageCusConfigList, middlewares: [mw_root, mw_api, mw_api_manage] },
     { path: '/api/manage/cusConfig/whiteip', module: apiManageCusConfigWhiteip, middlewares: [mw_root, mw_api, mw_api_manage] },
+    { path: '/api/manage/sysConfig/checkChannel', module: apiManageSysConfigCheckChannel, middlewares: [mw_root, mw_api, mw_api_manage] },
     { path: '/api/manage/sysConfig/others', module: apiManageSysConfigOthers, middlewares: [mw_root, mw_api, mw_api_manage] },
     { path: '/api/manage/sysConfig/page', module: apiManageSysConfigPage, middlewares: [mw_root, mw_api, mw_api_manage] },
     { path: '/api/manage/sysConfig/security', module: apiManageSysConfigSecurity, middlewares: [mw_root, mw_api, mw_api_manage] },
@@ -96,7 +101,6 @@ const routes = [
     { path: '/upload/huggingface/completeMultipart', module: uploadHuggingfaceCompleteMultipart, middlewares: [mw_root, mw_upload] },
     { path: '/upload/huggingface/getUploadUrl', module: uploadHuggingfaceGetUploadUrl, middlewares: [mw_root, mw_upload] },
     { path: '/api/channels', module: apiChannels, middlewares: [mw_root, mw_api] },
-    { path: '/api/directoryTree', module: apiDirectoryTree, middlewares: [mw_root, mw_api] },
     { path: '/api/fetchRes', module: apiFetchRes, middlewares: [mw_root, mw_api] },
     { path: '/api/siteConfig', module: apiSiteConfig, middlewares: [mw_root, mw_api] },
     { path: '/api/userConfig', module: apiUserConfig, middlewares: [mw_root, mw_api] },
@@ -291,9 +295,8 @@ export default {
 
         if (pathname === '/admin' || pathname === '/admin/') {
             const { adminPath } = await getSiteConfig(env);
-            if (adminPath !== '/admin') {
-                url.pathname = adminPath;
-                return Response.redirect(url, 302);
+            if (isHiddenLegacyAdminPath(pathname, adminPath)) {
+                return notFoundResponse(request);
             }
         }
 

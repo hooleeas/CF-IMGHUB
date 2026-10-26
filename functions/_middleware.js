@@ -1,5 +1,7 @@
 import { getSiteConfig } from './utils/siteConfig.js';
 import { checkDatabaseConfig } from './utils/databaseAdapter.js';
+import { notFoundResponse } from './utils/notFoundResponse.js';
+import { isHiddenLegacyAdminPath } from './utils/adminPathRouting.js';
 
 function missingDatabaseResponse(request) {
     const html = `<!doctype html>
@@ -69,13 +71,34 @@ export async function onRequest(context) {
         return missingDatabaseResponse(context.request);
     }
 
-    if (url.pathname !== '/admin' && url.pathname !== '/admin/') {
+    const isLegacyLoginPath = url.pathname === '/adminLogin' || url.pathname === '/adminLogin/';
+    const isLegacyAdminPath = url.pathname === '/admin' || url.pathname === '/admin/';
+    const isBrowserNavigation = ['GET', 'HEAD'].includes(context.request.method)
+        && acceptsHtml
+        && !url.pathname.split('/').at(-1)?.includes('.');
+
+    if (isLegacyLoginPath) return notFoundResponse(context.request);
+    if (!isLegacyAdminPath && !isBrowserNavigation) return context.next();
+
+    const { adminPath } = await getSiteConfig(context.env);
+    if (isHiddenLegacyAdminPath(url.pathname, adminPath)) return notFoundResponse(context.request);
+
+    if (!isBrowserNavigation) return context.next();
+
+    if (/^\/(api|file|dav|upload)(\/|$)/.test(url.pathname) || url.pathname === '/random') {
         return context.next();
     }
 
-    const { adminPath } = await getSiteConfig(context.env);
-    if (adminPath === '/admin') return context.next();
+    const normalizedPath = url.pathname.replace(/\/$/, '') || '/';
+    const isKnownPage = normalizedPath === '/'
+        || normalizedPath === '/customerConfig'
+        || normalizedPath === '/blockimg'
+        || normalizedPath === '/whiteliston'
+        || normalizedPath === '/admin'
+        || normalizedPath === adminPath
+        || normalizedPath === '/browse'
+        || normalizedPath.startsWith('/browse/');
+    if (!isKnownPage) return notFoundResponse(context.request);
 
-    url.pathname = adminPath;
-    return Response.redirect(url, 302);
+    return context.next();
 }
