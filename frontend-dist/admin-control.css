@@ -42,6 +42,10 @@ body {
   overflow-x: clip !important;
 }
 
+#admin-backup-root #database-storage-open[hidden] {
+  display: none !important;
+}
+
 .container {
   box-sizing: border-box;
   width: 100%;

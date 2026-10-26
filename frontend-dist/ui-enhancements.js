@@ -954,7 +954,7 @@
           <button type="button" id="export-all" data-backup-action="export">导出</button>
           <button type="button" class="secondary" id="import-all" data-backup-action="import">导入</button>
           <button type="button" class="secondary" id="refresh-all" data-backup-action="refresh">刷新</button>
-          <button type="button" class="secondary" id="database-storage-open" data-backup-action="database-storage">更改存储</button>
+          <button type="button" class="secondary" id="database-storage-open" data-backup-action="database-storage" hidden>更改存储</button>
           <a class="back-link ui-button ui-button-secondary" data-backup-home>返回管理面板</a>
         </div>
       </header>
@@ -976,6 +976,7 @@
     const RESET_OVERLAY = ROOT.querySelector('#reset-overlay');
     const DATABASE_STORAGE_OVERLAY = ROOT.querySelector('#database-storage-overlay');
     const DATABASE_STORAGE_CURRENT = ROOT.querySelector('#database-storage-current');
+    const DATABASE_STORAGE_OPEN = ROOT.querySelector('#database-storage-open');
     const DATABASE_STORAGE_SWITCH = ROOT.querySelector('#database-storage-switch');
     let DATABASE_STATUS = null;
     const ENTRIES = [];
@@ -1007,11 +1008,15 @@
       }
       return RESULT;
     };
+    const SYNC_DATABASE_STORAGE_BUTTON = () => {
+      DATABASE_STORAGE_OPEN.hidden = DATABASE_STATUS?.canSwitch !== true;
+    };
     const LOAD_ENTRIES = async () => {
       LIST.replaceChildren();
       ENTRIES.length = 0;
       DISPLAY_ENTRIES.length = 0;
       DATABASE_STATUS = await REQUEST_JSON('/api/manage/batch/kv?database=status');
+      SYNC_DATABASE_STORAGE_BUTTON();
       SUBTITLE.textContent = `正在读取 ${DATABASE_STATUS.current} 数据…`;
       let CURSOR = null;
       do {
@@ -1115,6 +1120,11 @@
       } else if (ACTION === 'database-storage') {
         try {
           DATABASE_STATUS = await REQUEST_JSON('/api/manage/batch/kv?database=status');
+          SYNC_DATABASE_STORAGE_BUTTON();
+          if (!DATABASE_STATUS.canSwitch) {
+            SHOW_MESSAGE('需要同时绑定 KV 和 D1 才能更改存储。', true);
+            return;
+          }
           DATABASE_STORAGE_CURRENT.textContent = `当前数据库：${DATABASE_STATUS.current}。可用：${Object.entries(DATABASE_STATUS.available).filter(([, AVAILABLE]) => AVAILABLE).map(([TYPE]) => TYPE).join('、') || '无'}`;
           ROOT.querySelectorAll('[name="database-storage-target"]').forEach((OPTION) => {
             OPTION.disabled = !DATABASE_STATUS.available[OPTION.value];
@@ -1164,6 +1174,7 @@
             body: JSON.stringify({ type: 'switch_database', target: TARGET }),
           });
           DATABASE_STATUS = await REQUEST_JSON('/api/manage/batch/kv?database=status');
+          SYNC_DATABASE_STORAGE_BUTTON();
           CLOSE_OVERLAY(DATABASE_STORAGE_OVERLAY);
           SHOW_MESSAGE(RESULT.sourceCleared === false ? `已切换到 ${TARGET}，但原数据库清理失败：${RESULT.cleanupError || '请检查数据库绑定'}` : `已核对 ${RESULT.verified ?? 0} 项并切换到 ${TARGET}。` , RESULT.sourceCleared === false);
           await LOAD_ENTRIES();

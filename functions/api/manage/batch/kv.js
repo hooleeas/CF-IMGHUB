@@ -101,10 +101,12 @@ function recordsEqual(expected, actual) {
 
 async function getDatabaseStatus(env) {
     const current = await getActiveDatabaseType(env);
+    const available = { KV: hasKVDatabase(env), D1: hasD1Database(env) };
     return jsonResponse({
         ok: true,
         current,
-        available: { KV: hasKVDatabase(env), D1: hasD1Database(env) },
+        available,
+        canSwitch: available.KV && available.D1,
         photoStorage: 'unchanged',
     });
 }

@@ -89,6 +89,22 @@ test('lists KV entries in pages and formats JSON for display', async () => {
     assert.deepEqual(valueResult.entry.raw, { index: 0 });
 });
 
+test('shows database migration as available only when KV and D1 are both bound', async () => {
+    const kv = createKV([['manage@system@databaseProvider', 'KV']]);
+    const request = new Request('https://example.test/api/manage/batch/kv?database=status');
+    const kvOnly = await onRequest({ request, env: { KV: kv } });
+    const kvOnlyStatus = await kvOnly.json();
+
+    assert.equal(kvOnlyStatus.canSwitch, false);
+    assert.deepEqual(kvOnlyStatus.available, { KV: true, D1: false });
+
+    const bothBound = await onRequest({ request, env: { KV: kv, D1: { prepare() {} } } });
+    const bothBoundStatus = await bothBound.json();
+
+    assert.equal(bothBoundStatus.canSwitch, true);
+    assert.deepEqual(bothBoundStatus.available, { KV: true, D1: true });
+});
+
 test('lists each image KV record individually and hides the legacy IMGS index', async () => {
     const kv = createKV(
         [['photo.webp', ''], ['other-record', ''], ['IMGS', '{"IMG":[]}']],
