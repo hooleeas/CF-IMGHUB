@@ -13,6 +13,79 @@
     "'": '&#39;',
   })[CHAR]);
 
+  const APP_IS_EN = () => localStorage.getItem('app-locale') === 'en';
+  const APP_TRANSLATIONS = {
+    '数据管理':'Data Management','备份与迁移':'Backup & Migration','共 ':'Total ',' 项数据库数据':' database entries',
+    '恢复出厂设置':'Factory Reset','导出':'Export','导入':'Import','刷新':'Refresh','更改存储':'Change Storage','返回管理面板':'Back to Admin Panel',
+    '保护并管理站点数据':'Protect and manage site data','可导出完整 JSON 备份、恢复数据，或在 KV 与 D1 之间迁移元数据。':'Export a full JSON backup, restore data, or migrate metadata between KV and D1.',
+    '正在读取':'Loading','搜索数据库键':'Search database keys','搜索配置键或记录…':'Search configuration keys or records…','正在加载…':'Loading…',
+    '输入 DELETE 以确认':'Type DELETE to confirm','取消':'Cancel','确认删除全部数据':'Delete all data','更改元数据数据库':'Change metadata database',
+    '正在读取当前数据库…':'Reading current database…','选择目标数据库':'Select destination database','迁移并切换':'Migrate and switch',
+    '正在迁移':'Migrating','迁移完成':'Migration complete','正在复制并校验配置、图片路径和元数据…':'Copying and verifying settings, image paths, and metadata…',
+    '文件管理':'File Management','图片管理':'Image Management','浏览已上传的文件，复制链接、重命名或删除。':'Browse uploaded files, copy links, rename, or delete.',
+    '搜索文件':'Search files','搜索文件名…':'Search filenames…','排序方式':'Sort by','名称 A–Z':'Name A–Z','名称 Z–A':'Name Z–A','正在加载…':'Loading…',
+    '还没有图片':'No images yet','上传的图片会显示在这里。':'Uploaded images will appear here.','没有匹配的图片':'No matching images','试试其他文件名。':'Try another filename.',
+    '图片文件':'Image file','重命名':'Rename','删除':'Delete','编辑图片名称':'Rename image','请输入新的文件名（不含扩展名）':'Enter a new filename (without extension)',
+    '确定':'Confirm','确定删除':'Confirm deletion','搜索数据库键':'Search database keys','查看':'View','复制':'Copy','复制链接':'Copy link','恢复':'Restore',
+    '上传设置':'Upload Settings','图片管理':'Image Management','查看、搜索和管理已上传的图片文件。':'Browse, search, and manage uploaded images.','备份、恢复并查看配置、订阅与链接 JSON。':'Back up, restore, and view configuration, subscription, and link JSON.','进入':'Open',
+    '站点':'Site','安全':'Security','退出':'Log out','保存':'Save','编辑':'Edit','添加渠道':'Add Channel','暂无渠道':'No channels yet','已启用':'Enabled','已停用':'Disabled','删除图片':'Delete image','图片名称已更新':'Image name updated','图片链接已复制':'Image link copied','图片链接复制失败':'Failed to copy image link','重命名失败，请检查文件名。':'Rename failed. Check the filename.','删除失败，请重试。':'Delete failed. Please try again.','复制链接失败，请检查剪贴板权限。':'Failed to copy link. Check clipboard permissions.','暂无图片':'No images yet','读取中':'Loading','正在初始化':'Initializing',
+    'API 请求失败':'API request failed','设置已保存':'Settings saved','默认上传渠道已保存':'Default upload channel saved','Cloudflare 邮箱':'Cloudflare email','管理路径':'Admin path','站点名称':'Site name'
+    ,'管理员用户名':'Administrator username','新密码':'New password','确认密码':'Confirm password','站点设置':'Site Settings','安全设置':'Security Settings','启用 WebDAV':'Enable WebDAV','用户名':'Username','密码':'Password','上传渠道 ID':'Upload Channel ID','渠道名称':'Channel Name','添加上传渠道':'Add Upload Channel','编辑上传渠道':'Edit Upload Channel','JSON 字段会按当前存储格式原样提交。':'JSON fields are submitted as-is using the current storage format.','JSON 格式无效':'Invalid JSON format','渠道 JSON 必须是对象并包含 name':'Channel JSON must be an object with a name field','Zone ID':'Zone ID','Cloudflare API Token / API Key':'Cloudflare API Token / API Key','客户端设置':'Client Settings','是否转换 WebP':'Convert to WebP','开启压缩':'Enable compression','压缩阈值 (MB)':'Compression threshold (MB)','压缩目标 (MB)':'Target size (MB)','暂无开放渠道':'No channels available','上传渠道':'Upload Channel','返回主页':'Home','配置':'Configure'
+  };
+  const APP_TRANSLATION_PAIRS = Object.entries(APP_TRANSLATIONS);
+  const APP_LOCALIZE = (ROOT = document) => {
+    const EN = APP_IS_EN();
+    const MAP = EN ? APP_TRANSLATIONS : Object.fromEntries(APP_TRANSLATION_PAIRS.map(([ZH, ENGLISH]) => [ENGLISH, ZH]));
+    const WALK = document.createTreeWalker(ROOT, NodeFilter.SHOW_TEXT);
+    let NODE;
+    while ((NODE = WALK.nextNode())) {
+      const VALUE = NODE.nodeValue.trim();
+      if (MAP[VALUE]) NODE.nodeValue = NODE.nodeValue.replace(VALUE, MAP[VALUE]);
+      else if (EN && /^\d+ 项数据库数据$/.test(VALUE)) NODE.nodeValue = NODE.nodeValue.replace(VALUE, VALUE.replace(' 项数据库数据', ' database entries'));
+      else if (EN && /^\d+\s*\/\s*\d+ 张图片$/.test(VALUE)) NODE.nodeValue = NODE.nodeValue.replace(VALUE, VALUE.replace(' 张图片', ' images'));
+      else if (EN && VALUE.startsWith('加载失败：')) NODE.nodeValue = NODE.nodeValue.replace('加载失败：', 'Load failed: ');
+    }
+    ROOT.querySelectorAll?.('[placeholder],[aria-label],[title]').forEach((EL) => ['placeholder','aria-label','title'].forEach((ATTR) => { const VALUE = EL.getAttribute(ATTR); if (VALUE && MAP[VALUE]) EL.setAttribute(ATTR, MAP[VALUE]); }));
+  };
+  const ADD_PAGE_LANGUAGE_BUTTON = (HEADER) => {
+    if (!HEADER || HEADER.querySelector('.standalone-language-toggle')) return;
+    const BUTTON = document.createElement('button');
+    BUTTON.type = 'button'; BUTTON.className = 'standalone-language-toggle ui-button ui-button-secondary';
+    BUTTON.textContent = '文 A'; BUTTON.title = APP_IS_EN() ? 'Switch language' : '切换语言';
+    BUTTON.setAttribute('aria-label', BUTTON.title);
+    BUTTON.addEventListener('click', () => { localStorage.setItem('app-locale', APP_IS_EN() ? 'zh-CN' : 'en'); location.reload(); });
+    HEADER.querySelector('.migration-actions, .admin-file-header > div')?.append(BUTTON);
+    APP_LOCALIZE(HEADER);
+  };
+  const SYNC_HOME_SITE_HEADING = () => {
+    const WRAPPER = document.querySelector('.upload-home .upload-card-wrapper');
+    if (!WRAPPER) return;
+    let HEADING = WRAPPER.querySelector(':scope > .configured-site-heading');
+    if (!HEADING) {
+      HEADING = document.createElement('h1');
+      HEADING.className = 'configured-site-heading';
+      WRAPPER.prepend(HEADING);
+    }
+    const NAME = CURRENT_SITE_NAME || 'cf-imghub';
+    if (HEADING.textContent !== NAME) HEADING.textContent = NAME;
+  };
+  const SYNC_PLATFORM_PASTE_LABEL = () => {
+    const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
+    if (!IS_MAC) return;
+    document.querySelectorAll('.upload-card, .upload-card-wrapper').forEach((ROOT) => {
+      const WALK = document.createTreeWalker(ROOT, NodeFilter.SHOW_TEXT);
+      let NODE;
+      while ((NODE = WALK.nextNode())) if (/Ctrl\s*\+\s*V/i.test(NODE.nodeValue)) NODE.nodeValue = NODE.nodeValue.replace(/Ctrl\s*\+\s*V/gi, 'Command + V');
+    });
+  };
+  const HOME_CONTENT_OBSERVER = new MutationObserver(() => { SYNC_HOME_SITE_HEADING(); SYNC_PLATFORM_PASTE_LABEL(); });
+  HOME_CONTENT_OBSERVER.observe(document.documentElement, { childList: true, subtree: true });
+  new MutationObserver((RECORDS) => RECORDS.forEach((RECORD) => {
+    if (RECORD.type === 'characterData') APP_LOCALIZE(RECORD.target.parentElement || document);
+    RECORD.addedNodes?.forEach((NODE) => { if (NODE.nodeType === 1) APP_LOCALIZE(NODE); });
+    if (RECORD.type === 'attributes') APP_LOCALIZE(RECORD.target.parentElement || document);
+  })).observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['placeholder','aria-label','title'] });
+
   const BUTTON_VARIANTS = Object.freeze({
     white: 'secondary',
     black: 'primary',
@@ -763,6 +836,7 @@
     const TITLE = IS_ADMIN ? `${NAME} 管理面板` : NAME;
     document.title = TITLE;
     UPDATE_ADMIN_PANEL_HEADING();
+    SYNC_HOME_SITE_HEADING();
     let OG_TITLE = document.querySelector('meta[property="og:title"]');
     if (!OG_TITLE) {
       OG_TITLE = document.createElement('meta');
@@ -974,6 +1048,7 @@
       <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
       `;
     document.body.appendChild(ROOT);
+    ADD_PAGE_LANGUAGE_BUTTON(ROOT.querySelector('.migration-header'));
 
     const LIST = ROOT.querySelector('#json-list');
     const SUBTITLE = ROOT.querySelector('.subtitle');
@@ -2412,6 +2487,7 @@
     ROOT.className = 'admin-file-manager';
     ROOT.innerHTML = '<header class="admin-file-header"><div><span class="admin-page-eyebrow">文件管理</span><h1>图片管理</h1><p>浏览已上传的文件，复制链接、重命名或删除。</p></div><a class="back-link ui-button ui-button-secondary" href="' + CURRENT_ADMIN_PATH + '">返回管理面板</a></header><section class="admin-file-list"><div class="admin-file-toolbar"><label class="admin-file-search"><span class="visually-hidden">搜索文件</span><input type="search" class="admin-file-search-input" placeholder="搜索文件名…" autocomplete="off"><span aria-hidden="true">⌕</span></label><label class="admin-file-sort"><span class="visually-hidden">排序方式</span><select class="admin-file-sort-select" aria-label="排序方式"><option value="asc">名称 A–Z</option><option value="desc">名称 Z–A</option></select></label><p class="admin-file-status" role="status">正在加载…</p></div><div class="admin-file-grid"></div></section>';
     document.body.append(ROOT);
+    ADD_PAGE_LANGUAGE_BUTTON(ROOT.querySelector('.admin-file-header'));
     const GRID = ROOT.querySelector('.admin-file-grid');
     const STATUS = ROOT.querySelector('.admin-file-status');
     const SEARCH = ROOT.querySelector('.admin-file-search-input');

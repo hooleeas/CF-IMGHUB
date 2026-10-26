@@ -483,6 +483,31 @@ body.admin-layout #app {
   box-shadow: var(--ADMIN-SHADOW);
 }
 
+.upload-home .upload-card-wrapper { position: relative; }
+.upload-home .configured-site-heading {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  top: -0.72em;
+  margin: 0;
+  padding: 0 .45em;
+  transform: translate(-50%, -100%);
+  color: var(--ADMIN-INK, inherit);
+  font-size: clamp(1.35rem, 3vw, 2.15rem);
+  font-weight: 650;
+  line-height: 1.15;
+  text-align: center;
+  white-space: nowrap;
+}
+.standalone-language-toggle { flex: 0 0 auto; min-width: 64px; }
+.migration-actions .standalone-language-toggle,
+.admin-file-header .standalone-language-toggle { margin-left: 4px; }
+@media (max-width: 640px) {
+  .upload-home .configured-site-heading { font-size: clamp(1.2rem, 6vw, 1.7rem); }
+  .migration-actions .standalone-language-toggle,
+  .admin-file-header .standalone-language-toggle { margin: 0; }
+}
+
 .ui-modal-backdrop {
   position: fixed;
   z-index: 3000;
