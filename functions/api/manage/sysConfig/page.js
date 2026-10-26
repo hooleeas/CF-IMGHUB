@@ -144,9 +144,7 @@ export async function getPageConfig(db, env) {
                     huggingface: 'HuggingFace',
                     webdav: 'WebDAV',
                 }[channelType] || channelType;
-                const label = channel.name === typeLabel
-                    ? typeLabel
-                    : `${typeLabel} — ${channel.name}`;
+                const label = channel.name || typeLabel;
                 return {
                     value: channel.id,
                     label,

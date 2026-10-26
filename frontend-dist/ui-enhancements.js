@@ -32,29 +32,66 @@
     'API 请求失败':'API request failed','设置已保存':'Settings saved','默认上传渠道已保存':'Default upload channel saved','Cloudflare 邮箱':'Cloudflare email','管理路径':'Admin path','站点名称':'Site name'
     ,'管理员用户名':'Administrator username','新密码':'New password','确认密码':'Confirm password','站点设置':'Site Settings','安全设置':'Security Settings','启用 WebDAV':'Enable WebDAV','用户名':'Username','密码':'Password','上传渠道 ID':'Upload Channel ID','渠道名称':'Channel Name','添加上传渠道':'Add Upload Channel','编辑上传渠道':'Edit Upload Channel','JSON 字段会按当前存储格式原样提交。':'JSON fields are submitted as-is using the current storage format.','JSON 格式无效':'Invalid JSON format','渠道 JSON 必须是对象并包含 name':'Channel JSON must be an object with a name field','Zone ID':'Zone ID','Cloudflare API Token / API Key':'Cloudflare API Token / API Key','客户端设置':'Client Settings','是否转换 WebP':'Convert to WebP','开启压缩':'Enable compression','压缩阈值 (MB)':'Compression threshold (MB)','压缩目标 (MB)':'Target size (MB)','暂无开放渠道':'No channels available','上传渠道':'Upload Channel','返回主页':'Home','配置':'Configure'
   };
-  const APP_TRANSLATION_PAIRS = Object.entries(APP_TRANSLATIONS);
+  Object.assign(APP_TRANSLATIONS, {
+    '切换语言':'Switch language','管理面板':'Admin Panel','上传渠道管理':'Upload Channel Management','全部类型':'All types','选择渠道类型':'Select channel type','选择一个渠道':'Choose one channel','请选择渠道类型。':'Select a channel type.','继续':'Continue','尚未添加上传渠道。请选择类型并添加。':'No upload channels yet. Choose a type and add one.','暂无渠道':'No channels configured','渠道设置已保存':'Channel settings saved',
+    '确定删除“':'Delete “','”吗？':'”?','JSON 配置':'JSON configuration','客户端设置已保存':'Client settings saved',
+    '站点设置已保存':'Site settings saved','正在返回管理面板。':'Returning to the admin panel.',
+    '正在加载管理面板…':'Loading admin panel…','登录':'Sign in','管理员登录':'Administrator Sign In',
+    '管理员密码':'Password','文件管理':'File Management','数据管理':'Data Management',
+    '维护 Cloudflare API 凭据。':'Manage Cloudflare API credentials.',
+    '管理 WebDAV 服务配置。':'Manage WebDAV service settings.',
+    '正在初始化数据库…':'Initializing database…'
+  });
+  const APP_TRANSLATION_PAIRS = Object.entries(APP_TRANSLATIONS).sort(([LEFT], [RIGHT]) => RIGHT.length - LEFT.length);
+  const APP_REVERSE_TRANSLATION_PAIRS = APP_TRANSLATION_PAIRS.map(([ZH, EN]) => [EN, ZH])
+    .sort(([LEFT], [RIGHT]) => RIGHT.length - LEFT.length);
   const APP_LOCALIZE = (ROOT = document) => {
     const EN = APP_IS_EN();
-    const MAP = EN ? APP_TRANSLATIONS : Object.fromEntries(APP_TRANSLATION_PAIRS.map(([ZH, ENGLISH]) => [ENGLISH, ZH]));
+    const TRANSLATIONS = EN ? APP_TRANSLATION_PAIRS : APP_REVERSE_TRANSLATION_PAIRS;
     const WALK = document.createTreeWalker(ROOT, NodeFilter.SHOW_TEXT);
     let NODE;
     while ((NODE = WALK.nextNode())) {
       const VALUE = NODE.nodeValue.trim();
-      if (MAP[VALUE]) NODE.nodeValue = NODE.nodeValue.replace(VALUE, MAP[VALUE]);
+      if (VALUE === '正在初始化管理面板…') NODE.nodeValue = NODE.nodeValue.replace(VALUE, EN ? 'Loading admin panel…' : '正在加载管理面板…');
       else if (EN && /^\d+ 项数据库数据$/.test(VALUE)) NODE.nodeValue = NODE.nodeValue.replace(VALUE, VALUE.replace(' 项数据库数据', ' database entries'));
+      else if (!EN && /^\d+ database entries$/.test(VALUE)) NODE.nodeValue = NODE.nodeValue.replace(VALUE, VALUE.replace(' database entries', ' 项数据库数据'));
       else if (EN && /^\d+\s*\/\s*\d+ 张图片$/.test(VALUE)) NODE.nodeValue = NODE.nodeValue.replace(VALUE, VALUE.replace(' 张图片', ' images'));
+      else if (!EN && /^\d+\s*\/\s*\d+ images$/.test(VALUE)) NODE.nodeValue = NODE.nodeValue.replace(VALUE, VALUE.replace(' images', ' 张图片'));
       else if (EN && VALUE.startsWith('加载失败：')) NODE.nodeValue = NODE.nodeValue.replace('加载失败：', 'Load failed: ');
+      else if (!EN && VALUE.startsWith('Load failed: ')) NODE.nodeValue = NODE.nodeValue.replace('Load failed: ', '加载失败：');
+      else {
+        let TRANSLATED = NODE.nodeValue;
+        TRANSLATIONS.forEach(([SOURCE, TARGET]) => {
+          if (SOURCE && TRANSLATED.includes(SOURCE)) TRANSLATED = TRANSLATED.split(SOURCE).join(TARGET);
+        });
+        if (TRANSLATED !== NODE.nodeValue) NODE.nodeValue = TRANSLATED;
+      }
     }
-    ROOT.querySelectorAll?.('[placeholder],[aria-label],[title]').forEach((EL) => ['placeholder','aria-label','title'].forEach((ATTR) => { const VALUE = EL.getAttribute(ATTR); if (VALUE && MAP[VALUE]) EL.setAttribute(ATTR, MAP[VALUE]); }));
+    ROOT.querySelectorAll?.('[placeholder],[aria-label],[title]').forEach((EL) => ['placeholder','aria-label','title'].forEach((ATTR) => {
+      const VALUE = EL.getAttribute(ATTR);
+      if (!VALUE) return;
+      const TRANSLATED = TRANSLATIONS.reduce((TEXT, [SOURCE, TARGET]) => TEXT.split(SOURCE).join(TARGET), VALUE);
+      if (TRANSLATED !== VALUE) EL.setAttribute(ATTR, TRANSLATED);
+    }));
   };
+  const APP_SET_LOCALE = (LOCALE) => {
+    const NEXT_LOCALE = LOCALE === 'en' ? 'en' : 'zh-CN';
+    localStorage.setItem('app-locale', NEXT_LOCALE);
+    document.documentElement.lang = NEXT_LOCALE === 'en' ? 'en' : 'zh-CN';
+    APP_LOCALIZE(document);
+  };
+  window.APP_SET_LOCALE = APP_SET_LOCALE;
   const ADD_PAGE_LANGUAGE_BUTTON = (HEADER) => {
     if (!HEADER || HEADER.querySelector('.standalone-language-toggle')) return;
     const BUTTON = document.createElement('button');
     BUTTON.type = 'button'; BUTTON.className = 'standalone-language-toggle ui-button ui-button-secondary';
-    BUTTON.textContent = '文 A'; BUTTON.title = APP_IS_EN() ? 'Switch language' : '切换语言';
+    BUTTON.innerHTML = '<span class="text-language-icon" aria-hidden="true"><span class="text-language-icon-primary">文</span><span class="text-language-icon-secondary">A</span></span>';
+    BUTTON.title = APP_IS_EN() ? 'Switch language' : '切换语言';
     BUTTON.setAttribute('aria-label', BUTTON.title);
-    BUTTON.addEventListener('click', () => { localStorage.setItem('app-locale', APP_IS_EN() ? 'zh-CN' : 'en'); location.reload(); });
-    HEADER.querySelector('.migration-actions, .admin-file-header > div')?.append(BUTTON);
+    BUTTON.addEventListener('click', () => APP_SET_LOCALE(APP_IS_EN() ? 'zh-CN' : 'en'));
+    const TARGET = HEADER.querySelector('.migration-actions, .admin-file-header-actions')
+      || HEADER.querySelector('.admin-file-header > div');
+    TARGET?.append(BUTTON);
     APP_LOCALIZE(HEADER);
   };
   const SYNC_HOME_SITE_HEADING = () => {
@@ -771,7 +808,7 @@
         if (!RESPONSE.ok) throw new Error(RESULT.error || `Settings save failed (${RESPONSE.status})`);
         if (SECURITY && RESULT.adminPasswordChanged && !RESULT.adminSessionRenewed) {
           window.CC('管理员账号已更新，正在返回登录页…');
-          setTimeout(() => window.location.assign('/adminLogin'), 600);
+          setTimeout(() => window.location.assign(CURRENT_ADMIN_PATH), 600);
           return;
         }
         if (SECURITY) {
@@ -847,8 +884,7 @@
     if (!SITE_TITLE_OBSERVER) {
       const TITLE_ELEMENT = document.querySelector('title');
       SITE_TITLE_OBSERVER = new MutationObserver(() => {
-        const IS_ADMIN_PAGE = window.location.pathname === CURRENT_ADMIN_PATH
-          || window.location.pathname === '/adminLogin';
+        const IS_ADMIN_PAGE = window.location.pathname === CURRENT_ADMIN_PATH;
         const CURRENT_TITLE = IS_ADMIN_PAGE
           ? `${CURRENT_SITE_NAME} 管理面板`
           : CURRENT_SITE_NAME;
@@ -891,15 +927,10 @@
       CURRENT_ADMIN_PATH = SETTINGS.adminPath || '/admin';
       const ADMIN_PATH = SETTINGS.adminPath || '/admin';
       const IS_ADMIN = INITIAL_PATHNAME === ADMIN_PATH
-        || window.location.pathname === ADMIN_PATH
-        || window.location.pathname === '/adminLogin';
+        || window.location.pathname === ADMIN_PATH;
       APPLY_SITE_NAME(SETTINGS.siteName || 'cf-imghub', IS_ADMIN);
       if (LEGACY_BACKUP_PATH) {
         window.location.replace(`${ADMIN_PATH}#JSON`);
-        return;
-      }
-      if (window.location.pathname === '/admin' && ADMIN_PATH !== '/admin') {
-        window.location.replace(`${ADMIN_PATH}${window.location.search}${window.location.hash}`);
         return;
       }
       if (INITIAL_PATHNAME !== ADMIN_PATH && window.location.pathname !== ADMIN_PATH) return;
@@ -951,9 +982,9 @@
     GROUPS.forEach((GROUP, INDEX) => {
       GROUP.dataset.empty = String(GROUP.querySelectorAll('.channel-card').length === 0);
       if (!GROUP.id) GROUP.id = `storage-channel-group-${INDEX}`;
-      GROUP.hidden = GROUP.dataset.empty === 'true';
-      GROUP.inert = GROUP.dataset.empty === 'true';
-      GROUP.setAttribute('aria-hidden', String(GROUP.dataset.empty === 'true'));
+      GROUP.hidden = false;
+      GROUP.inert = false;
+      GROUP.setAttribute('aria-hidden', 'false');
 
       const TYPE_ICON = GROUP.querySelector('.group-icon');
       GROUP.querySelectorAll('.channel-card').forEach((CARD) => {
@@ -1028,7 +1059,8 @@
     ROOT.id = 'admin-backup-root';
     ROOT.innerHTML = `
       <header class="migration-header">
-        <div class="migration-header-main"><span class="admin-page-eyebrow">数据管理</span><h1>备份与迁移</h1><p class="subtitle">共 <span id="entry-count" data-backup-count>0</span> 项数据库数据</p></div>
+        <h1>备份与迁移</h1>
+        <p class="subtitle">可导出完整 JSON 备份、恢复数据，或在 KV 与 D1 之间迁移元数据。</p>
         <div class="migration-actions">
           <button type="button" class="danger" id="reset-open" data-backup-action="reset">恢复出厂设置</button>
           <button type="button" id="export-all" data-backup-action="export">导出</button>
@@ -1038,8 +1070,7 @@
           <a class="back-link ui-button ui-button-secondary" data-backup-home>返回管理面板</a>
         </div>
       </header>
-      <section class="backup-intro"><span class="backup-intro-icon" aria-hidden="true">⇄</span><div><strong>保护并管理站点数据</strong><p>可导出完整 JSON 备份、恢复数据，或在 KV 与 D1 之间迁移元数据。</p></div><span class="backup-database-badge" data-database-badge>正在读取</span></section>
-      <div class="backup-toolbar"><label class="backup-search"><span class="visually-hidden">搜索数据库键</span><input type="search" id="backup-search" placeholder="搜索配置键或记录…" autocomplete="off"><span aria-hidden="true">⌕</span></label><span class="backup-visible-count" id="backup-visible-count">正在加载…</span></div>
+      <div class="backup-toolbar"><label class="backup-search"><span class="visually-hidden">搜索数据库键</span><input type="search" id="backup-search" placeholder="搜索配置键或记录…" autocomplete="off"><span aria-hidden="true">⌕</span></label></div>
       <div id="json-list" class="json-list" aria-live="polite"></div>
       <input class="admin-backup-file" type="file" accept=".json,application/json" hidden>
       <div class="overlay" id="view-overlay" aria-hidden="true"><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="view-title"><div class="dialog-header"><h2 id="view-title"></h2><button type="button" class="dialog-close secondary" id="view-close" aria-label="关闭">×</button></div><pre class="json-value" id="view-value"></pre></section></div>
@@ -1052,10 +1083,7 @@
 
     const LIST = ROOT.querySelector('#json-list');
     const SUBTITLE = ROOT.querySelector('.subtitle');
-    const COUNT = ROOT.querySelector('#entry-count');
     const SEARCH = ROOT.querySelector('#backup-search');
-    const VISIBLE_COUNT = ROOT.querySelector('#backup-visible-count');
-    const DATABASE_BADGE = ROOT.querySelector('[data-database-badge]');
     const FILE_INPUT = ROOT.querySelector('.admin-backup-file');
     const TOAST = ROOT.querySelector('#toast');
     const VIEW_OVERLAY = ROOT.querySelector('#view-overlay');
@@ -1086,7 +1114,7 @@
     };
     const UPDATE_SUBTITLE = () => {
       const TYPE = DATABASE_STATUS?.current || 'KV';
-      SUBTITLE.textContent = `当前使用 ${TYPE}；共 ${ENTRIES.length} 项配置、图片路径与元数据`;
+      SUBTITLE.textContent = `可导出完整 JSON 备份、恢复数据，或在 KV 与 D1 之间迁移元数据。当前使用 ${TYPE}；共 ${ENTRIES.length} 项配置、图片路径与元数据`;
     };
     const REQUEST_JSON = async (URL, OPTIONS) => {
       const RESPONSE = await fetch(URL, { credentials: 'same-origin', ...OPTIONS });
@@ -1103,8 +1131,6 @@
     };
     const SYNC_DATABASE_STORAGE_BUTTON = () => {
       DATABASE_STORAGE_OPEN.hidden = DATABASE_STATUS?.canSwitch !== true;
-      DATABASE_BADGE.textContent = `${DATABASE_STATUS?.current || 'KV'} 数据库`;
-      DATABASE_BADGE.classList.toggle('is-migration-ready', DATABASE_STATUS?.canSwitch === true);
     };
     const SET_MIGRATION_PROGRESS = (STATE, LABEL, DETAIL) => {
       DATABASE_MIGRATION_PROGRESS.hidden = false;
@@ -1127,21 +1153,15 @@
     };
     const FILTER_ENTRIES = () => {
       const QUERY = SEARCH.value.trim().toLocaleLowerCase();
-      let VISIBLE = 0;
       LIST.querySelectorAll('.json-entry[data-entry-key]').forEach((CARD) => {
         const MATCH = CARD.dataset.entryKey.includes(QUERY);
         CARD.hidden = !MATCH;
-        if (MATCH) VISIBLE += 1;
       });
-      VISIBLE_COUNT.textContent = `${VISIBLE} / ${ENTRIES.length} 项`;
     };
     const LOAD_ENTRIES = async () => {
       LIST.replaceChildren();
       ENTRIES.length = 0;
       DISPLAY_ENTRIES.length = 0;
-      DATABASE_BADGE.textContent = '正在初始化';
-      DATABASE_BADGE.classList.remove('is-migration-ready');
-      DATABASE_BADGE.setAttribute('aria-live', 'polite');
       SUBTITLE.textContent = '正在初始化数据库…';
       DATABASE_STATUS = await REQUEST_JSON('/api/manage/batch/kv?database=status');
       SYNC_DATABASE_STORAGE_BUTTON();
@@ -1159,7 +1179,6 @@
       ENTRIES.sort((LEFT, RIGHT) => LEFT.name.localeCompare(RIGHT.name));
       DISPLAY_ENTRIES.push(...ENTRIES);
       DISPLAY_ENTRIES.sort((LEFT, RIGHT) => LEFT.name.localeCompare(RIGHT.name));
-      COUNT.textContent = String(ENTRIES.length);
       UPDATE_SUBTITLE();
       const CARDS = DISPLAY_ENTRIES.length ? DISPLAY_ENTRIES.map((ENTRY, INDEX) => {
         const CARD = document.createElement('article');
@@ -2485,7 +2504,7 @@
     const ROOT = document.createElement('main');
     ROOT.id = 'admin-file-root';
     ROOT.className = 'admin-file-manager';
-    ROOT.innerHTML = '<header class="admin-file-header"><div><span class="admin-page-eyebrow">文件管理</span><h1>图片管理</h1><p>浏览已上传的文件，复制链接、重命名或删除。</p></div><a class="back-link ui-button ui-button-secondary" href="' + CURRENT_ADMIN_PATH + '">返回管理面板</a></header><section class="admin-file-list"><div class="admin-file-toolbar"><label class="admin-file-search"><span class="visually-hidden">搜索文件</span><input type="search" class="admin-file-search-input" placeholder="搜索文件名…" autocomplete="off"><span aria-hidden="true">⌕</span></label><label class="admin-file-sort"><span class="visually-hidden">排序方式</span><select class="admin-file-sort-select" aria-label="排序方式"><option value="asc">名称 A–Z</option><option value="desc">名称 Z–A</option></select></label><p class="admin-file-status" role="status">正在加载…</p></div><div class="admin-file-grid"></div></section>';
+    ROOT.innerHTML = '<header class="admin-file-header"><h1>图片管理</h1><div class="admin-file-header-actions"><a class="back-link ui-button ui-button-secondary" href="' + CURRENT_ADMIN_PATH + '">返回管理面板</a></div><p class="admin-file-description">浏览已上传的文件，复制链接、重命名或删除。</p></header><section class="admin-file-list"><div class="admin-file-toolbar"><label class="admin-file-search"><span class="visually-hidden">搜索文件</span><input type="search" class="admin-file-search-input" placeholder="搜索文件名…" autocomplete="off"><span aria-hidden="true">⌕</span></label><label class="admin-file-sort"><span class="visually-hidden">排序方式</span><select class="admin-file-sort-select" aria-label="排序方式"><option value="asc">名称 A–Z</option><option value="desc">名称 Z–A</option></select></label><p class="admin-file-status" role="status">正在加载…</p></div><div class="admin-file-grid"></div></section>';
     document.body.append(ROOT);
     ADD_PAGE_LANGUAGE_BUTTON(ROOT.querySelector('.admin-file-header'));
     const GRID = ROOT.querySelector('.admin-file-grid');
@@ -2640,6 +2659,7 @@
   REMOVE_LEGACY_ADMIN_SECTIONS();
 
   const HIDE_REMOVED_SETTINGS = () => {
+    if (!document.body || !document.documentElement) return;
     const IS_STANDALONE_ROUTE = window.location.pathname === CURRENT_ADMIN_PATH;
     const IS_FILE_ROUTE = IS_STANDALONE_ROUTE && window.location.hash === '#File';
     const IS_BACKUP_ROUTE = IS_STANDALONE_ROUTE && window.location.hash === '#JSON';

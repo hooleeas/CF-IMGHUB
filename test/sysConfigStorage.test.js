@@ -194,6 +194,41 @@ test('round-trips the flat site, admin, upload, and channel record shape', () =>
     assert.deepEqual(JSON.parse(encodeSystemConfigValue(decoded)), stored);
 });
 
+test('persists editable environment-channel overrides without storing environment secrets', () => {
+    const encoded = JSON.parse(encodeSystemConfigValue({
+        upload: {
+            telegram: {
+                channels: [{
+                    id: 'TGAAA',
+                    name: 'Telegram_env',
+                    type: 'telegram',
+                    savePath: 'environment variable',
+                    enabled: false,
+                    proxyUrl: 'https://proxy.example.com',
+                    botToken: 'do-not-persist-this-token',
+                    chatId: 'do-not-persist-this-chat',
+                }],
+            },
+        },
+    }));
+
+    assert.deepEqual(encoded.UPLOAD.CHANNEL_OVERRIDES, {
+        TELEGRAM: {
+            ENABLED: false,
+            PROXY_URL: 'https://proxy.example.com',
+        },
+    });
+    assert.equal(JSON.stringify(encoded).includes('do-not-persist-this-token'), false);
+    assert.equal(JSON.stringify(encoded).includes('do-not-persist-this-chat'), false);
+
+    const decoded = JSON.parse(decodeSystemConfigValue(JSON.stringify(encoded)));
+    assert.deepEqual(decoded.upload.telegram.channels, [{
+        enabled: false,
+        proxyUrl: 'https://proxy.example.com',
+        savePath: 'environment variable',
+    }]);
+});
+
 test('removes unrelated legacy custom config while retaining storage settings', async () => {
     const kv = createKV([['CONFIG', JSON.stringify({
         SITE: { NAME: 'cf-imghub', ADMIN_PATH: 'admin' },
@@ -599,8 +634,8 @@ test('page settings persist only allowed values and preserve false values on rea
     assert.equal(webpSetting.category_en, 'Client Settings');
     assert.deepEqual(channelSetting.options, [{
         value: channelId,
-        label: 'R2 — Example',
-        label_en: 'R2 — Example',
+        label: 'Example',
+        label_en: 'Example',
     }]);
 });
 
@@ -667,8 +702,8 @@ test('migrates the legacy default type and name to one channel ID', async () => 
     assert.equal(settings.config.find(({ id }) => id === 'defaultChannelId').value, channelId);
     assert.deepEqual(settings.config.find(({ id }) => id === 'defaultChannelId').options, [{
         value: channelId,
-        label: 'R2 — archive',
-        label_en: 'R2 — archive',
+        label: 'archive',
+        label_en: 'archive',
     }]);
     assert.deepEqual(JSON.parse(await getDatabase({ KV: kv }).get('manage@sysConfig@page')), {
         channelId,

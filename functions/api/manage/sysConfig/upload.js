@@ -10,6 +10,13 @@ const CHANNEL_TYPE_NAMES = {
     huggingface: 'HuggingFace',
     webdav: 'WebDAV',
 };
+const ENVIRONMENT_OVERRIDE_FIELDS = {
+    telegram: ['enabled', 'proxyUrl'],
+    s3: ['enabled', 'cdnDomain'],
+    discord: ['enabled', 'proxyUrl', 'isNitro'],
+    huggingface: ['enabled', 'isPrivate'],
+    webdav: ['enabled', 'publicUrl', 'headers', 'createDirectory'],
+};
 
 function createChannelId(usedIds) {
     const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -44,14 +51,28 @@ function stripEnvironmentChannels(settings) {
         if (!channelSettings || typeof channelSettings !== 'object') continue;
 
         const channels = (Array.isArray(channelSettings.channels) ? channelSettings.channels : [])
-            .filter((channel) => {
+            .flatMap((channel) => {
             const isEnvironmentChannel = channel?.fixed === true
                 || (channel?.savePath ?? channel?.savepath) === 'environment variable';
-            if (channelType !== 'cfr2') return !isEnvironmentChannel;
-            if (isEnvironmentChannel || channel?.id === 'R2A' || hasR2Channel) return false;
-            hasR2Channel = true;
-            return true;
+            if (isEnvironmentChannel) {
+                const overrideFields = ENVIRONMENT_OVERRIDE_FIELDS[channelType];
+                if (!overrideFields) return [];
+                const overrides = {
+                    savePath: 'environment variable',
+                    enabled: channel.enabled !== false,
+                };
+                for (const key of overrideFields) {
+                    if (Object.hasOwn(channel, key) && channel[key] !== undefined) {
+                        overrides[key] = channel[key];
+                    }
+                }
+                return [overrides];
+            }
+            if (channelType === 'cfr2' && (channel?.id === 'R2A' || hasR2Channel)) return [];
+            if (channelType === 'cfr2') hasR2Channel = true;
+            return [channel];
         }).map((channel) => {
+            if (channel.savePath === 'environment variable' && !channel.id) return channel;
             const persistedChannel = { ...channel };
             let id = typeof persistedChannel.id === 'string'
                 && /^[A-Z]{5}$/.test(persistedChannel.id)
@@ -95,6 +116,19 @@ function stripEnvironmentChannels(settings) {
     };
 }
 
+function hasDuplicateChannelNames(settings) {
+    const names = new Set();
+    for (const channelSettings of Object.values(settings)) {
+        for (const channel of channelSettings.channels || []) {
+            const name = typeof channel.name === 'string' ? channel.name.trim() : '';
+            if (!name) continue;
+            if (names.has(name)) return true;
+            names.add(name);
+        }
+    }
+    return false;
+}
+
 export async function onRequest(context) {
     // 上传设置相关，GET方法读取设置，POST方法保存设置
     const {
@@ -111,6 +145,9 @@ export async function onRequest(context) {
     // GET读取设置
     if (request.method === 'GET') {
         const settings = await getUploadConfig(db, env)
+        settings.capabilities = {
+            cfr2: typeof env.R2?.put === 'function',
+        };
 
         return new Response(JSON.stringify(settings), {
             headers: {
@@ -123,6 +160,24 @@ export async function onRequest(context) {
     if (request.method === 'POST') {
         const body = await request.json()
         const { settings } = stripEnvironmentChannels(body || {});
+
+        if (hasDuplicateChannelNames(settings)) {
+            return new Response(JSON.stringify({ error: '渠道名称不可重复。' }), {
+                status: 400,
+                headers: { 'content-type': 'application/json' },
+            });
+        }
+        const storedSettingsJson = await db.get('manage@sysConfig@upload');
+        const storedSettings = storedSettingsJson ? JSON.parse(storedSettingsJson) : {};
+        const storedR2Ids = new Set((storedSettings.cfr2?.channels || []).map((channel) => channel.id));
+        const hasNewR2Channel = (settings.cfr2?.channels || [])
+            .some((channel) => !storedR2Ids.has(channel.id));
+        if (hasNewR2Channel && typeof env.R2?.put !== 'function') {
+            return new Response(JSON.stringify({ error: '当前项目未绑定 Cloudflare R2 存储桶。' }), {
+                status: 400,
+                headers: { 'content-type': 'application/json' },
+            });
+        }
 
         if (Object.keys(settings).length === 0) {
             await db.delete('manage@sysConfig@upload')

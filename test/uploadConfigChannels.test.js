@@ -78,7 +78,9 @@ test('persists a manually added R2 channel without persisting environment channe
     },
   };
 
-  const response = await onRequest(requestContext(kv, 'POST', settings));
+  const response = await onRequest(requestContext(kv, 'POST', settings, {
+    R2: { put() {}, head() {} },
+  }));
   const result = await response.json();
   const config = readConfig(kv);
 
@@ -91,13 +93,48 @@ test('persists a manually added R2 channel without persisting environment channe
     enabled: true,
     type: 'cfr2',
   }]);
-  assert.deepEqual(config.upload.telegram.channels, [{
-    id: result.telegram.channels[0].id,
-    name: 'backup',
+  assert.deepEqual(config.upload.telegram.channels.map((channel) => channel.name).filter(Boolean), ['backup']);
+  assert.deepEqual(config.upload.telegram.channels.find((channel) => channel.savePath), {
     enabled: true,
-    type: 'telegram',
-  }]);
+    savePath: 'environment variable',
+  });
+  assert.match(config.upload.telegram.channels.find((channel) => channel.name)?.id, /^[A-Z]{5}$/);
+  assert.equal(JSON.stringify(config.upload.telegram.channels).includes('Telegram_env'), false);
   assert.equal(config.upload.cfr2.loadBalance, undefined);
+});
+
+test('persists only editable, non-secret environment channel overrides', async () => {
+  const kv = createKV();
+  const env = { R2: {}, TG_BOT_TOKEN: 'environment-secret', TG_CHAT_ID: 'chat-1' };
+  const response = await onRequest(requestContext(kv, 'POST', {
+    telegram: {
+      channels: [{
+        id: 'TGAAA',
+        name: 'Telegram_env',
+        type: 'telegram',
+        fixed: true,
+        savePath: 'environment variable',
+        enabled: false,
+        botToken: 'environment-secret',
+        chatId: 'chat-1',
+        proxyUrl: 'https://proxy.example.com',
+      }],
+    },
+  }, env));
+  const saved = readConfig(kv).upload.telegram.channels;
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(saved, [{
+    savePath: 'environment variable',
+    enabled: false,
+    proxyUrl: 'https://proxy.example.com',
+  }]);
+
+  const getResponse = await onRequest(requestContext(kv, 'GET', undefined, env));
+  const result = await getResponse.json();
+  assert.equal(result.telegram.channels[0].enabled, false);
+  assert.equal(result.telegram.channels[0].proxyUrl, 'https://proxy.example.com');
+  assert.equal(result.telegram.channels[0].botToken, 'environment-secret');
 });
 
 test('removes legacy automatic R2 records and preserves a manual channel', async () => {
@@ -125,16 +162,29 @@ test('removes legacy automatic R2 records and preserves a manual channel', async
 
 test('starts without R2 channels even when an R2 bucket is bound', async () => {
   const kv = createKV();
-  const response = await onRequest(requestContext(kv, 'GET'));
+  const response = await onRequest(requestContext(kv, 'GET', undefined, {
+    R2: { put() {}, head() {} },
+  }));
   const result = await response.json();
 
   assert.equal(response.status, 200);
   assert.deepEqual(result.cfr2.channels, []);
+  assert.equal(result.capabilities.cfr2, true);
   assert.equal(readConfig(kv).upload?.cfr2, undefined);
+});
+
+test('reports that R2 cannot be added when the bucket binding is missing', async () => {
+  const kv = createKV();
+  const response = await onRequest(requestContext(kv, 'GET'));
+  const result = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(result.capabilities.cfr2, false);
 });
 
 test('saves and returns an editable name for a manually added R2 channel', async () => {
   const kv = createKV();
+  const r2Env = { R2: { put() {}, head() {} } };
   const response = await onRequest(requestContext(kv, 'POST', {
     cfr2: {
       channels: [{
@@ -144,7 +194,7 @@ test('saves and returns an editable name for a manually added R2 channel', async
         enabled: true,
       }],
     },
-  }));
+  }, r2Env));
   const result = await response.json();
   const editResponse = await onRequest(requestContext(kv, 'POST', {
     cfr2: {
@@ -153,7 +203,7 @@ test('saves and returns an editable name for a manually added R2 channel', async
         name: 'ArchiveBucket',
       }],
     },
-  }));
+  }, r2Env));
   const editResult = await editResponse.json();
 
   assert.equal(response.status, 200);
@@ -161,6 +211,41 @@ test('saves and returns an editable name for a manually added R2 channel', async
   assert.equal(editResponse.status, 200);
   assert.equal(editResult.cfr2.channels[0].name, 'ArchiveBucket');
   assert.equal(readConfig(kv).upload.cfr2.channels[0].name, 'ArchiveBucket');
+});
+
+test('rejects duplicate channel names across upload channel types', async () => {
+  const kv = createKV();
+  const response = await onRequest(requestContext(kv, 'POST', {
+    cfr2: {
+      channels: [{ id: 'ONEAA', name: 'archive', enabled: true }],
+    },
+    s3: {
+      channels: [{ id: 'TWOAA', name: 'archive', enabled: true }],
+    },
+  }));
+  const result = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.equal(result.error, '渠道名称不可重复。');
+  assert.equal(kv.values.has('CONFIG'), false);
+});
+
+test('allows editing a channel without changing its unique name', async () => {
+  const kv = createKV();
+  const firstResponse = await onRequest(requestContext(kv, 'POST', {
+    telegram: {
+      channels: [{ id: 'ONEAA', name: 'archive', enabled: true }],
+    },
+  }));
+  const saved = await firstResponse.json();
+  const editResponse = await onRequest(requestContext(kv, 'POST', {
+    telegram: {
+      channels: [{ ...saved.telegram.channels[0], name: 'archive' }],
+    },
+  }));
+
+  assert.equal(editResponse.status, 200);
+  assert.equal((await editResponse.json()).telegram.channels[0].name, 'archive');
 });
 
 test('allows one manually added R2 channel when an R2 bucket is bound', async () => {
@@ -181,15 +266,17 @@ test('allows one manually added R2 channel when an R2 bucket is bound', async ()
     },
   })]]);
 
-  const firstResponse = await onRequest(requestContext(kv, 'GET'));
+  const r2Env = { R2: { put() {}, head() {} } };
+  const firstResponse = await onRequest(requestContext(kv, 'GET', undefined, r2Env));
   const firstResult = await firstResponse.json();
   assert.deepEqual(firstResult.cfr2.channels.map(({ name }) => name), ['Primary-0']);
 
-  await onRequest(requestContext(kv, 'POST', {
+  const saveResponse = await onRequest(requestContext(kv, 'POST', {
     cfr2: { channels: [...duplicateR2Channels, { id: 'ARCAA', name: 'archive', type: 'R2' }] },
-  }));
+  }, r2Env));
+  assert.equal(saveResponse.status, 200);
   const firstStoredConfig = readConfig(kv);
-  const secondResponse = await onRequest(requestContext(kv, 'GET'));
+  const secondResponse = await onRequest(requestContext(kv, 'GET', undefined, r2Env));
   const secondResult = await secondResponse.json();
   const secondStoredConfig = readConfig(kv);
 
@@ -200,7 +287,7 @@ test('allows one manually added R2 channel when an R2 bucket is bound', async ()
   assert.deepEqual(secondStoredConfig.upload.cfr2.channels, firstStoredConfig.upload.cfr2.channels);
 });
 
-test('keeps only one manually configured R2 channel when no environment binding exists', async () => {
+test('rejects adding an R2 channel when no bucket binding exists', async () => {
   const kv = createKV();
   const response = await onRequest(requestContext(kv, 'POST', {
     cfr2: {
@@ -211,16 +298,10 @@ test('keeps only one manually configured R2 channel when no environment binding 
     },
   }, { R2: null }));
   const result = await response.json();
-  const config = readConfig(kv);
 
-  assert.equal(response.status, 200);
-  assert.deepEqual(result.cfr2.channels.map(({ name }) => name), ['Primary']);
-  assert.deepEqual(config.upload.cfr2.channels, [{
-    id: result.cfr2.channels[0].id,
-    name: 'Primary',
-    type: 'cfr2',
-    enabled: true,
-  }]);
+  assert.equal(response.status, 400);
+  assert.equal(result.error, '当前项目未绑定 Cloudflare R2 存储桶。');
+  assert.equal(readConfig(kv).upload.cfr2, undefined);
 });
 
 test('stores WebDAV details in one enabled channel record with uppercase keys', async () => {

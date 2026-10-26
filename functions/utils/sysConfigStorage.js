@@ -39,6 +39,13 @@ const CHANNEL_TYPES = {
     huggingface: 'HuggingFace',
     webdav: 'WebDAV',
 };
+const ENVIRONMENT_CHANNEL_OVERRIDE_FIELDS = {
+    telegram: ['enabled', 'proxyUrl'],
+    s3: ['enabled', 'cdnDomain'],
+    discord: ['enabled', 'proxyUrl', 'isNitro'],
+    huggingface: ['enabled', 'isPrivate'],
+    webdav: ['enabled', 'publicUrl', 'headers', 'createDirectory'],
+};
 const CHANNEL_TYPE_KEYS = Object.fromEntries(
     Object.entries(CHANNEL_TYPES).map(([key, value]) => [value.toLowerCase(), key])
 );
@@ -291,6 +298,7 @@ function toFlatSystemConfig(config) {
     const uploadSettings = config.upload || {};
     const channels = [];
     const loadBalance = {};
+    const channelOverrides = {};
     const channelIdsByName = new Map();
     for (const [type, typeSettings] of Object.entries(uploadSettings)) {
         const channelType = CHANNEL_TYPES[type];
@@ -298,7 +306,16 @@ function toFlatSystemConfig(config) {
         for (const channel of Array.isArray(typeSettings.channels) ? typeSettings.channels : []) {
             if (!channel || typeof channel !== 'object') continue;
             if (channel.fixed === true
-                || (channel.savePath ?? channel.savepath) === 'environment variable') continue;
+                || (channel.savePath ?? channel.savepath) === 'environment variable') {
+                const allowedFields = ENVIRONMENT_CHANNEL_OVERRIDE_FIELDS[type];
+                if (!allowedFields) continue;
+                const overrides = {};
+                for (const key of allowedFields) {
+                    if (Object.hasOwn(channel, key)) overrides[key] = channel[key];
+                }
+                if (Object.keys(overrides).length) channelOverrides[type] = overrides;
+                continue;
+            }
             channelIdsByName.set(`${type}:${channel.name}`, channel.id);
             const { id, ...details } = channel;
             delete details.type;
@@ -331,6 +348,7 @@ function toFlatSystemConfig(config) {
         compressQuality: page.compressQuality ?? DEFAULT_PAGE_SETTINGS.compressQuality,
     };
     if (Object.keys(loadBalance).length) upload.loadBalance = loadBalance;
+    if (Object.keys(channelOverrides).length) upload.channelOverrides = channelOverrides;
 
     const others = config.others || {};
     const cloudflareApiToken = others.cloudflareApiToken || DEFAULT_OTHER_SETTINGS.cloudflareApiToken;
@@ -376,6 +394,19 @@ function fromFlatSystemConfig(config) {
         const { channel: _channel, ...details } = storedChannel;
         const channels = groupedChannels[channelType] || (groupedChannels[channelType] = []);
         channels.push({ ...details, type: channelType });
+    }
+
+    for (const [type, overrides] of Object.entries(upload.channelOverrides || {})) {
+        const allowedFields = ENVIRONMENT_CHANNEL_OVERRIDE_FIELDS[type];
+        if (!allowedFields || !overrides || typeof overrides !== 'object' || Array.isArray(overrides)) continue;
+        const persistedOverrides = {};
+        for (const key of allowedFields) {
+            if (Object.hasOwn(overrides, key)) persistedOverrides[key] = overrides[key];
+        }
+        if (Object.keys(persistedOverrides).length) {
+            const channels = groupedChannels[type] || (groupedChannels[type] = []);
+            channels.push({ ...persistedOverrides, savePath: 'environment variable' });
+        }
     }
 
     for (const [channelName, settings] of Object.entries(upload.loadBalance || {})) {
