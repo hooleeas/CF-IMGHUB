@@ -40,7 +40,87 @@ function createKV(entries = [], metadataEntries = []) {
     };
 }
 
-function context(kv, path, method = 'GET', body) {
+function createD1(tables = {}, { corruptFileValue = false } = {}) {
+    const data = {
+        files: new Map(tables.files || []),
+        settings: new Map(tables.settings || []),
+        index_operations: new Map(tables.index_operations || []),
+        index_metadata: new Map(tables.index_metadata || []),
+        other_data: new Map(tables.other_data || []),
+    };
+    const binding = {
+        data,
+        prepare(sql) {
+            const normalized = sql.replace(/\s+/g, ' ').trim();
+            let bound = [];
+            const resultFor = (query, values) => {
+                if (query.startsWith('SELECT key FROM settings')) {
+                    const key = [...data.settings.keys()].find((name) => name === 'CONFIG'
+                        || name.startsWith('manage@sysConfig@')
+                        || name.startsWith('MANAGE@SYSCONFIG@'));
+                    return key ? { key } : null;
+                }
+                if (query.startsWith('SELECT id FROM files')) return data.files.has('CONFIG') ? { id: 'CONFIG' } : null;
+                if (query.startsWith('SELECT value FROM settings')) {
+                    const value = data.settings.get(values[0]);
+                    return value === undefined ? null : { value };
+                }
+                if (query.startsWith('SELECT * FROM files WHERE id = ?')) return data.files.get(values[0]) || null;
+                if (query.startsWith('SELECT value FROM other_data')) {
+                    const value = data.other_data.get(values[0]);
+                    return value === undefined ? null : { value };
+                }
+                return null;
+            };
+            const run = async () => {
+                if (normalized.startsWith('INSERT OR REPLACE INTO settings')) {
+                    data.settings.set(bound[0], bound[1]);
+                } else if (normalized.startsWith('DELETE FROM settings WHERE')) {
+                    data.settings.delete(bound[0]);
+                } else if (normalized.startsWith('INSERT OR REPLACE INTO files')) {
+                    data.files.set(bound[0], {
+                        id: bound[0],
+                        value: corruptFileValue ? `${bound[1]}-corrupted` : bound[1],
+                        metadata: bound[2],
+                    });
+                } else if (normalized.startsWith('DELETE FROM files WHERE')) {
+                    data.files.delete(bound[0]);
+                } else if (/^DELETE FROM (files|settings|index_operations|index_metadata|other_data)$/.test(normalized)) {
+                    data[normalized.slice('DELETE FROM '.length)].clear();
+                }
+                return { meta: { changes: 1 } };
+            };
+            const all = async () => {
+                if (normalized.startsWith('PRAGMA table_info(files)')) return { results: [{ name: 'tags' }] };
+                if (normalized.startsWith('SELECT id, value, metadata FROM files')) {
+                    return { results: [...data.files.values()].map((row) => ({ ...row })) };
+                }
+                if (normalized.startsWith('SELECT key, value FROM settings')) {
+                    return { results: [...data.settings].map(([key, value]) => ({ key, value })) };
+                }
+                if (normalized.startsWith('SELECT id, type, timestamp, data FROM index_operations')) {
+                    return { results: [...data.index_operations.values()] };
+                }
+                if (normalized.startsWith('SELECT * FROM index_metadata')) {
+                    return { results: [...data.index_metadata.values()] };
+                }
+                if (normalized.startsWith('SELECT key, value FROM other_data')) {
+                    return { results: [...data.other_data].map(([key, value]) => ({ key, value })) };
+                }
+                return { results: [] };
+            };
+            return {
+                bind(...values) { bound = values; return this; },
+                first: () => resultFor(normalized, bound),
+                run,
+                all,
+            };
+        },
+    };
+    return binding;
+}
+
+function context(kv, path, method = 'GET', body, d1) {
     const headers = body === undefined
         ? {}
         : {
@@ -53,7 +133,7 @@ function context(kv, path, method = 'GET', body) {
             headers,
             ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         }),
-        env: { KV: kv },
+        env: { KV: kv, ...(d1 ? { D1: d1 } : {}) },
     };
 }
 
@@ -103,6 +183,114 @@ test('shows database migration as available only when KV and D1 are both bound',
 
     assert.equal(bothBoundStatus.canSwitch, true);
     assert.deepEqual(bothBoundStatus.available, { KV: true, D1: true });
+});
+
+test('migrates KV records and image metadata to D1, verifies them, then clears KV', async () => {
+    const imageMetadata = {
+        FileName: 'photo.png',
+        FileType: 'image/png',
+        FileSizeBytes: 1234,
+        Channel: 'External',
+        ExternalLink: 'https://images.example.test/photo.png',
+    };
+    const additionalSettings = Array.from({ length: 125 }, (_, index) => [
+        `manage@custom@setting-${String(index).padStart(3, '0')}`,
+        JSON.stringify({ index }),
+    ]);
+    const kv = createKV(
+        [
+            ['manage@system@databaseProvider', 'KV'],
+            ['manage@custom@preferences', JSON.stringify({ layout: 'grid' })],
+            ...additionalSettings,
+            ['photo.png', 'external-photo-value'],
+        ],
+        [['photo.png', imageMetadata]]
+    );
+    const d1 = createD1();
+
+    const response = await onRequest(context(kv, '/api/manage/batch/kv', 'POST', {
+        type: 'switch_database',
+        target: 'D1',
+    }, d1));
+    const result = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(result.current, 'D1');
+    assert.equal(result.verified, 127);
+    assert.equal(result.sourceCleared, true);
+    assert.equal(await kv.get('manage@system@databaseProvider'), null);
+    assert.equal(await kv.get('photo.png'), null);
+    assert.equal(d1.data.settings.get('manage@custom@preferences'), JSON.stringify({ layout: 'grid' }));
+    assert.equal(d1.data.settings.get('manage@custom@setting-124'), JSON.stringify({ index: 124 }));
+    assert.equal(d1.data.files.get('photo.png').value, 'external-photo-value');
+    assert.deepEqual(JSON.parse(d1.data.files.get('photo.png').metadata), {
+        ...imageMetadata,
+        ChannelId: 'EXTERNAL',
+        FileSize: '0.00',
+    });
+});
+
+test('migrates D1 records and image metadata to KV, verifies them, then clears D1', async () => {
+    const imageMetadata = {
+        FileName: 'photo.png',
+        FileType: 'image/png',
+        FileSizeBytes: 1234,
+        Channel: 'External',
+        ChannelId: 'EXTERNAL',
+        ExternalLink: 'https://images.example.test/photo.png',
+    };
+    const d1 = createD1({
+        settings: [
+            ['manage@system@databaseProvider', 'D1'],
+            ['manage@custom@preferences', JSON.stringify({ layout: 'list' })],
+        ],
+        files: [['photo.png', { id: 'photo.png', value: 'external-photo-value', metadata: JSON.stringify(imageMetadata) }]],
+    });
+    const kv = createKV([['manage@system@databaseProvider', 'D1']]);
+
+    const response = await onRequest(context(kv, '/api/manage/batch/kv', 'POST', {
+        type: 'switch_database',
+        target: 'KV',
+    }, d1));
+    const result = await response.json();
+
+    assert.equal(response.status, 200, JSON.stringify(result));
+    assert.equal(result.current, 'KV');
+    assert.equal(result.verified, 2);
+    assert.equal(result.sourceCleared, true);
+    assert.equal(await kv.get('manage@custom@preferences'), JSON.stringify({ layout: 'list' }));
+    assert.equal(await kv.get('photo.png'), null);
+    assert.equal(await kv.get('manage@system@databaseProvider'), 'KV');
+    const imageRecord = [...kv.values.entries()].find(([key]) => key.startsWith('IMG_'));
+    assert.ok(imageRecord);
+    assert.equal(JSON.parse(imageRecord[1]).FILE_NAME, 'photo.png');
+    assert.equal(JSON.parse(imageRecord[1]).URL, imageMetadata.ExternalLink);
+    assert.equal(d1.data.files.size, 0);
+    assert.equal(d1.data.settings.size, 0);
+});
+
+test('keeps the active KV database intact when migration verification fails', async () => {
+    const kv = createKV(
+        [['manage@system@databaseProvider', 'KV'], ['photo.png', 'source-image']],
+        [['photo.png', {
+            FileName: 'photo.png',
+            FileType: 'image/png',
+            FileSizeBytes: 1234,
+            Channel: 'External',
+        }]]
+    );
+    const d1 = createD1({}, { corruptFileValue: true });
+
+    const response = await onRequest(context(kv, '/api/manage/batch/kv', 'POST', {
+        type: 'switch_database',
+        target: 'D1',
+    }, d1));
+    const result = await response.json();
+
+    assert.equal(response.status, 409);
+    assert.match(result.error, /核对未通过/);
+    assert.equal(await kv.get('manage@system@databaseProvider'), 'KV');
+    assert.ok([...kv.values.keys()].some((key) => key.startsWith('IMG_')));
 });
 
 test('lists each image KV record individually and hides the legacy IMGS index', async () => {

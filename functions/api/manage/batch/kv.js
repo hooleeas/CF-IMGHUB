@@ -94,9 +94,19 @@ function stableValue(value) {
     return value;
 }
 
+function stableMetadata(metadata) {
+    const normalized = { ...(metadata || {}) };
+    if (normalized.FileSizeBytes !== undefined && normalized.FileSize !== undefined) {
+        const expectedSize = (Number(normalized.FileSizeBytes) / 1024 / 1024).toFixed(2);
+        if (normalized.FileSize === expectedSize) delete normalized.FileSize;
+    }
+    if (normalized.ChannelId === 'EXTERNAL') normalized.Channel = 'External';
+    return stableValue(normalized);
+}
+
 function recordsEqual(expected, actual) {
     return (expected?.value ?? '') === (actual?.value ?? '')
-        && JSON.stringify(stableValue(expected?.metadata || {})) === JSON.stringify(stableValue(actual?.metadata || {}));
+        && JSON.stringify(stableMetadata(expected?.metadata)) === JSON.stringify(stableMetadata(actual?.metadata));
 }
 
 async function getDatabaseStatus(env) {
@@ -165,15 +175,17 @@ async function switchDatabase(env, target) {
     try {
         if (sourceType === 'KV') {
             let cursor;
-            let deleted = 0;
+            const keysToDelete = [];
             do {
                 const page = await env.KV.list({ limit: PAGE_SIZE, ...(cursor ? { cursor } : {}) });
-                const keys = page.keys.map(({ name }) => name);
-                await Promise.all(keys.map((key) => env.KV.delete(key)));
-                deleted += keys.length;
+                keysToDelete.push(...page.keys.map(({ name }) => name));
                 cursor = page.list_complete ? null : page.cursor || null;
             } while (cursor);
-            cleanup = { ok: true, deleted };
+            for (let offset = 0; offset < keysToDelete.length; offset += WRITE_BATCH_SIZE) {
+                await Promise.all(keysToDelete.slice(offset, offset + WRITE_BATCH_SIZE)
+                    .map((key) => env.KV.delete(key)));
+            }
+            cleanup = { ok: true, deleted: keysToDelete.length };
         } else {
             const db = env.D1;
             for (const sql of [

@@ -3,6 +3,7 @@
 
   const ROOT = document.getElementById('app');
   if (location.hash === '#File' || location.hash === '#JSON') return;
+  ROOT.innerHTML = '<main class="standalone-initializing" role="status" aria-live="polite"><span class="standalone-initializing-spinner" aria-hidden="true"></span><p>正在初始化管理面板…</p></main>';
   const TYPES = [
     ['telegram', 'Telegram'], ['cfr2', 'Cloudflare R2'], ['s3', 'S3'],
     ['discord', 'Discord'], ['huggingface', 'HuggingFace'], ['webdav', 'WebDAV'],

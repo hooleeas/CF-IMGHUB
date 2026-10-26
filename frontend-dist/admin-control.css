@@ -2659,6 +2659,49 @@ html.dark .standalone-admin .admin-settings-content > .upload-settings > .page-h
   border-color:var(--ADMIN-LINE);
   background:var(--ADMIN-SURFACE);
 }
+.standalone-initializing {
+  display:grid;
+  min-height:50vh;
+  place-content:center;
+  justify-items:center;
+  gap:14px;
+  color:var(--ADMIN-INK);
+  font-size:16px;
+}
+.standalone-initializing p { margin:0; }
+.standalone-initializing-spinner {
+  width:30px;
+  height:30px;
+  border:3px solid var(--ADMIN-LINE);
+  border-top-color:#288b58;
+  border-radius:50%;
+  animation:standalone-initializing-spin .8s linear infinite;
+}
+@keyframes standalone-initializing-spin { to { transform:rotate(360deg); } }
+.database-migration-progress {
+  margin:14px 0;
+  padding:14px;
+  border:1px solid var(--ADMIN-LINE);
+  border-radius:12px;
+  color:var(--ADMIN-INK);
+  background:var(--ADMIN-SURFACE);
+}
+.database-migration-progress[hidden] { display:none; }
+.database-migration-progress > strong { display:block; margin-bottom:10px; font-size:16px; }
+.database-migration-progress-track { height:10px; overflow:hidden; border-radius:999px; background:#e4e9ed; }
+.database-migration-progress-track > span { display:block; width:32%; height:100%; border-radius:inherit; background:#288b58; transform:translateX(-110%); }
+.database-migration-progress.is-running .database-migration-progress-track > span { animation:database-migration-indeterminate 1.25s ease-in-out infinite; }
+.database-migration-progress.is-complete .database-migration-progress-track > span { width:100%; transform:none; }
+.database-migration-progress.is-error { border-color:#b42318; }
+.database-migration-progress.is-error > strong { color:#b42318; }
+.database-migration-progress > p { margin:9px 0 0; color:var(--ADMIN-MUTED); font-size:13px; line-height:1.5; }
+html.dark .database-migration-progress-track { background:#343d45; }
+html.dark .database-migration-progress.is-error > strong { color:#ff8d86; }
+@keyframes database-migration-indeterminate {
+  0% { transform:translateX(-110%); }
+  55% { transform:translateX(100%); }
+  100% { transform:translateX(320%); }
+}
 @media(max-width:700px) {
   .standalone-admin .admin-settings-content > .upload-settings > .page-header { padding:18px; }
   .standalone-admin .page-header .admin-default-upload-channel-control { grid-template-columns:minmax(76px,1fr) minmax(0,1.5fr); gap:10px; }

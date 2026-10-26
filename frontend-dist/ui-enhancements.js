@@ -970,7 +970,7 @@
       <input class="admin-backup-file" type="file" accept=".json,application/json" hidden>
       <div class="overlay" id="view-overlay" aria-hidden="true"><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="view-title"><div class="dialog-header"><h2 id="view-title"></h2><button type="button" class="dialog-close secondary" id="view-close" aria-label="关闭">×</button></div><pre class="json-value" id="view-value"></pre></section></div>
       <div class="overlay" id="reset-overlay" aria-hidden="true"><section class="dialog reset-dialog" role="dialog" aria-modal="true" aria-labelledby="reset-title"><h2 id="reset-title">恢复出厂设置</h2><p class="reset-warning">此操作会永久删除当前数据库中的全部配置、文件记录及索引。请先导出备份；删除后无法撤销。</p><label>输入 DELETE 以确认<input id="reset-confirmation" type="text" autocomplete="off" required></label><div class="dialog-actions"><button type="button" class="secondary" id="reset-cancel">取消</button><button type="button" class="danger" id="reset-confirm">确认删除全部数据</button></div></section></div>
-      <div class="overlay" id="database-storage-overlay" aria-hidden="true"><section class="dialog reset-dialog" role="dialog" aria-modal="true" aria-labelledby="database-storage-title"><div class="dialog-header"><h2 id="database-storage-title">更改元数据数据库</h2><button type="button" class="dialog-close secondary" data-storage-close aria-label="关闭">×</button></div><p id="database-storage-current">正在读取当前数据库…</p><fieldset id="database-storage-options" style="display:grid;gap:10px;margin:0;padding:14px;border:1px solid rgba(120,130,140,.35);border-radius:12px"><legend>选择目标数据库</legend><label><input type="radio" name="database-storage-target" value="KV"> KV</label><label><input type="radio" name="database-storage-target" value="D1"> D1</label></fieldset><p class="reset-warning" style="color:inherit">迁移会复制并核对配置、图片路径和元数据；核对通过后自动切换并清空原数据库。R2、Telegram、S3、WebDAV 等图片文件不会移动。</p><div class="dialog-actions"><button type="button" class="secondary" data-storage-close>取消</button><button type="button" class="secondary" id="database-storage-switch">迁移并切换</button></div></section></div>
+      <div class="overlay" id="database-storage-overlay" aria-hidden="true"><section class="dialog reset-dialog" role="dialog" aria-modal="true" aria-labelledby="database-storage-title"><div class="dialog-header"><h2 id="database-storage-title">更改元数据数据库</h2><button type="button" class="dialog-close secondary" data-storage-close aria-label="关闭">×</button></div><p id="database-storage-current">正在读取当前数据库…</p><div class="database-migration-progress" id="database-migration-progress" hidden role="status" aria-live="polite"><strong id="database-migration-progress-label">正在迁移</strong><div class="database-migration-progress-track" role="progressbar" aria-label="数据库迁移进度" aria-valuemin="0" aria-valuemax="100" aria-valuetext="正在迁移"><span></span></div><p id="database-migration-progress-detail">正在复制并校验配置、图片路径和元数据…</p></div><fieldset id="database-storage-options" style="display:grid;gap:10px;margin:0;padding:14px;border:1px solid rgba(120,130,140,.35);border-radius:12px"><legend>选择目标数据库</legend><label><input type="radio" name="database-storage-target" value="KV"> KV</label><label><input type="radio" name="database-storage-target" value="D1"> D1</label></fieldset><p class="reset-warning" style="color:inherit">迁移会复制并核对配置、图片路径和元数据；核对通过后自动切换并清空原数据库。R2、Telegram、S3、WebDAV 等图片文件不会移动。</p><div class="dialog-actions"><button type="button" class="secondary" data-storage-close>取消</button><button type="button" class="secondary" id="database-storage-switch">迁移并切换</button></div></section></div>
       <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
       `;
     document.body.appendChild(ROOT);
@@ -989,7 +989,14 @@
     const DATABASE_STORAGE_CURRENT = ROOT.querySelector('#database-storage-current');
     const DATABASE_STORAGE_OPEN = ROOT.querySelector('#database-storage-open');
     const DATABASE_STORAGE_SWITCH = ROOT.querySelector('#database-storage-switch');
+    const DATABASE_MIGRATION_PROGRESS = ROOT.querySelector('#database-migration-progress');
+    const DATABASE_MIGRATION_PROGRESS_LABEL = ROOT.querySelector('#database-migration-progress-label');
+    const DATABASE_MIGRATION_PROGRESS_DETAIL = ROOT.querySelector('#database-migration-progress-detail');
+    const DATABASE_MIGRATION_PROGRESS_BAR = ROOT.querySelector('.database-migration-progress-track');
+    const DATABASE_MIGRATION_PROGRESS_FILL = DATABASE_MIGRATION_PROGRESS_BAR.querySelector('span');
     let DATABASE_STATUS = null;
+    let DATABASE_MIGRATION_RUNNING = false;
+    let DATABASE_MIGRATION_DONE = false;
     const ENTRIES = [];
     const DISPLAY_ENTRIES = [];
     let TOAST_TIMER;
@@ -1024,6 +1031,25 @@
       DATABASE_BADGE.textContent = `${DATABASE_STATUS?.current || 'KV'} 数据库`;
       DATABASE_BADGE.classList.toggle('is-migration-ready', DATABASE_STATUS?.canSwitch === true);
     };
+    const SET_MIGRATION_PROGRESS = (STATE, LABEL, DETAIL) => {
+      DATABASE_MIGRATION_PROGRESS.hidden = false;
+      DATABASE_MIGRATION_PROGRESS.className = `database-migration-progress is-${STATE}`;
+      DATABASE_MIGRATION_PROGRESS_LABEL.textContent = LABEL;
+      DATABASE_MIGRATION_PROGRESS_DETAIL.textContent = DETAIL;
+      DATABASE_MIGRATION_PROGRESS_BAR.setAttribute('aria-valuetext', LABEL);
+      if (STATE === 'complete') {
+        DATABASE_MIGRATION_PROGRESS_BAR.setAttribute('aria-valuenow', '100');
+        DATABASE_MIGRATION_PROGRESS_FILL.style.width = '100%';
+      } else {
+        DATABASE_MIGRATION_PROGRESS_BAR.removeAttribute('aria-valuenow');
+        DATABASE_MIGRATION_PROGRESS_FILL.style.removeProperty('width');
+      }
+    };
+    const SET_MIGRATION_CLOSE_LOCK = (LOCKED) => {
+      ROOT.querySelectorAll('[data-storage-close], [name="database-storage-target"]').forEach((CONTROL) => {
+        CONTROL.disabled = LOCKED;
+      });
+    };
     const FILTER_ENTRIES = () => {
       const QUERY = SEARCH.value.trim().toLocaleLowerCase();
       let VISIBLE = 0;
@@ -1038,6 +1064,10 @@
       LIST.replaceChildren();
       ENTRIES.length = 0;
       DISPLAY_ENTRIES.length = 0;
+      DATABASE_BADGE.textContent = '正在初始化';
+      DATABASE_BADGE.classList.remove('is-migration-ready');
+      DATABASE_BADGE.setAttribute('aria-live', 'polite');
+      SUBTITLE.textContent = '正在初始化数据库…';
       DATABASE_STATUS = await REQUEST_JSON('/api/manage/batch/kv?database=status');
       SYNC_DATABASE_STORAGE_BUTTON();
       SUBTITLE.textContent = `正在读取 ${DATABASE_STATUS.current} 数据…`;
@@ -1161,6 +1191,14 @@
             OPTION.disabled = !DATABASE_STATUS.available[OPTION.value];
             OPTION.checked = OPTION.value === DATABASE_STATUS.current;
           });
+          DATABASE_MIGRATION_RUNNING = false;
+          DATABASE_MIGRATION_DONE = false;
+          DATABASE_MIGRATION_PROGRESS.hidden = true;
+          DATABASE_MIGRATION_PROGRESS.className = 'database-migration-progress';
+          DATABASE_MIGRATION_PROGRESS_FILL.style.removeProperty('width');
+          DATABASE_MIGRATION_PROGRESS_BAR.removeAttribute('aria-valuenow');
+          DATABASE_MIGRATION_PROGRESS_BAR.setAttribute('aria-valuetext', '等待开始');
+          DATABASE_STORAGE_SWITCH.textContent = '迁移并切换';
           DATABASE_STORAGE_SWITCH.disabled = true;
           OPEN_OVERLAY(DATABASE_STORAGE_OVERLAY);
         } catch (ERROR) {
@@ -1188,15 +1226,25 @@
       if (EVENT.target === VIEW_OVERLAY) CLOSE_OVERLAY(VIEW_OVERLAY);
       if (EVENT.target === RESET_OVERLAY) CLOSE_OVERLAY(RESET_OVERLAY);
       if (EVENT.target.closest('#reset-cancel')) CLOSE_OVERLAY(RESET_OVERLAY);
-      if (EVENT.target.closest('[data-storage-close]') || EVENT.target === DATABASE_STORAGE_OVERLAY) CLOSE_OVERLAY(DATABASE_STORAGE_OVERLAY);
+      if ((EVENT.target.closest('[data-storage-close]') || EVENT.target === DATABASE_STORAGE_OVERLAY)
+        && !DATABASE_MIGRATION_RUNNING) CLOSE_OVERLAY(DATABASE_STORAGE_OVERLAY);
       if (EVENT.target.closest('#database-storage-switch')) {
+        const BUTTON = EVENT.target.closest('#database-storage-switch');
+        if (DATABASE_MIGRATION_DONE) {
+          CLOSE_OVERLAY(DATABASE_STORAGE_OVERLAY);
+          await LOAD_ENTRIES();
+          return;
+        }
         const TARGET = ROOT.querySelector('[name="database-storage-target"]:checked')?.value;
         if (!TARGET) {
           SHOW_MESSAGE('请选择一个已绑定的数据库。', true);
           return;
         }
-        const BUTTON = EVENT.target.closest('#database-storage-switch');
         BUTTON.disabled = true;
+        BUTTON.textContent = '正在迁移…';
+        DATABASE_MIGRATION_RUNNING = true;
+        SET_MIGRATION_CLOSE_LOCK(true);
+        SET_MIGRATION_PROGRESS('running', '正在迁移', `正在将配置、图片路径和元数据迁移到 ${TARGET}，并逐项校验…`);
         DATABASE_STORAGE_CURRENT.textContent = `正在将配置、图片路径和元数据迁移到 ${TARGET}，核对通过后会自动切换并清理原数据库…`;
         try {
           const RESULT = await REQUEST_JSON('/api/manage/batch/kv', {
@@ -1204,15 +1252,30 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ type: 'switch_database', target: TARGET }),
           });
-          DATABASE_STATUS = await REQUEST_JSON('/api/manage/batch/kv?database=status');
+          DATABASE_STATUS = await REQUEST_JSON('/api/manage/batch/kv?database=status').catch(() => ({
+            current: RESULT.current,
+            available: DATABASE_STATUS?.available || { KV: false, D1: false },
+            canSwitch: DATABASE_STATUS?.canSwitch === true,
+          }));
           SYNC_DATABASE_STORAGE_BUTTON();
-          CLOSE_OVERLAY(DATABASE_STORAGE_OVERLAY);
-          SHOW_MESSAGE(RESULT.sourceCleared === false ? `已切换到 ${TARGET}，但原数据库清理失败：${RESULT.cleanupError || '请检查数据库绑定'}` : `已核对 ${RESULT.verified ?? 0} 项并切换到 ${TARGET}。` , RESULT.sourceCleared === false);
-          await LOAD_ENTRIES();
+          DATABASE_MIGRATION_RUNNING = false;
+          DATABASE_MIGRATION_DONE = true;
+          SET_MIGRATION_CLOSE_LOCK(false);
+          const CLEANUP_WARNING = RESULT.sourceCleared === false
+            ? `迁移和校验已完成，但原数据库清理失败：${RESULT.cleanupError || '请检查数据库绑定。'}`
+            : `已复制并核对 ${RESULT.verified ?? 0} 项，当前使用 ${TARGET}。`;
+          SET_MIGRATION_PROGRESS('complete', '迁移完成', CLEANUP_WARNING);
+          DATABASE_STORAGE_CURRENT.textContent = `当前数据库：${TARGET}。迁移数据已完成校验。`;
+          BUTTON.textContent = '完成';
+          BUTTON.disabled = false;
+          SHOW_MESSAGE('迁移完成。');
         } catch (ERROR) {
+          DATABASE_MIGRATION_RUNNING = false;
+          SET_MIGRATION_CLOSE_LOCK(false);
           DATABASE_STORAGE_CURRENT.textContent = ERROR.message;
+          SET_MIGRATION_PROGRESS('error', '迁移失败', ERROR.message);
+          BUTTON.textContent = '重试';
           SHOW_MESSAGE(ERROR.message, true);
-        } finally {
           BUTTON.disabled = false;
         }
       }
@@ -1249,7 +1312,7 @@
       if (EVENT.key === 'Escape') {
         CLOSE_OVERLAY(VIEW_OVERLAY);
         CLOSE_OVERLAY(RESET_OVERLAY);
-        CLOSE_OVERLAY(DATABASE_STORAGE_OVERLAY);
+        if (!DATABASE_MIGRATION_RUNNING) CLOSE_OVERLAY(DATABASE_STORAGE_OVERLAY);
       }
     });
     FILE_INPUT.addEventListener('change', async () => {
