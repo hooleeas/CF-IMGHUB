@@ -193,16 +193,8 @@ async function handlePut(request, env) {
         uploadUrl.searchParams.set('uploadFolder', uploadFolder);
     }
 
-    // 获取 WebDAV 配置的上传渠道
-    const othersConfig = await fetchOthersConfig(env);
-    const webdavConfig = othersConfig.webDAV || {};
-    if (webdavConfig.uploadChannel) {
-        uploadUrl.searchParams.set('uploadChannel', webdavConfig.uploadChannel);
-    }
-    if (webdavConfig.channelName) {
-        uploadUrl.searchParams.set('channelName', webdavConfig.channelName);
-    }
-
+    // Do not store a separate upload-channel choice in WebDAV settings.
+    // /upload resolves the administrator-selected default channel server-side.
     try {
         const response = await fetch(uploadUrl.toString(), { 
             method: 'POST', 

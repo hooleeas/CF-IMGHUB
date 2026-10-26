@@ -2501,9 +2501,37 @@
   REMOVE_LEGACY_ADMIN_SECTIONS();
 
   const HIDE_REMOVED_SETTINGS = () => {
-    // The standalone admin owns its markup and behavior; do not run DOM surgery
-    // intended for the retired Vue settings component on this page.
-    if (document.querySelector('.standalone-admin')) return;
+    const IS_STANDALONE_ROUTE = window.location.pathname === CURRENT_ADMIN_PATH;
+    const IS_FILE_ROUTE = IS_STANDALONE_ROUTE && window.location.hash === '#File';
+    const IS_BACKUP_ROUTE = IS_STANDALONE_ROUTE && window.location.hash === '#JSON';
+    const STANDALONE_ADMIN = document.querySelector('.standalone-admin');
+    // Keep the standalone admin intact on its main route. When a hash route is
+    // requested, remove it before creating the independent file/backup page.
+    if (STANDALONE_ADMIN && !IS_FILE_ROUTE && !IS_BACKUP_ROUTE) return;
+    if (STANDALONE_ADMIN && (IS_FILE_ROUTE || IS_BACKUP_ROUTE)) STANDALONE_ADMIN.remove();
+    document.documentElement.classList.toggle('admin-file-route', IS_FILE_ROUTE);
+    if (IS_FILE_ROUTE) {
+      document.body.classList.remove('admin-backup-page', 'migration-page');
+      document.getElementById('admin-backup-root')?.remove();
+    } else if (IS_BACKUP_ROUTE) {
+      document.body.classList.remove('admin-file-page');
+      document.getElementById('admin-file-root')?.remove();
+    }
+    if (IS_STANDALONE_ROUTE && !IS_FILE_ROUTE && !IS_BACKUP_ROUTE
+      && (document.body.classList.contains('admin-file-page')
+        || document.body.classList.contains('admin-backup-page')
+        || document.getElementById('admin-file-root')
+        || document.getElementById('admin-backup-root'))) {
+      document.body.classList.remove('admin-file-page', 'admin-backup-page', 'migration-page');
+      document.getElementById('admin-file-root')?.remove();
+      document.getElementById('admin-backup-root')?.remove();
+      window.RENDER_STANDALONE_ADMIN?.();
+      return;
+    }
+    // A standalone shell was already removed above when switching to a hash
+    // route. Continue so the independent file or backup view can be mounted.
+    // Only leave the Vue cleanup path when a standalone shell still exists on
+    // the main admin route (handled by the guard above).
     REMOVE_LEGACY_LOGIN_ROUTE();
     REMOVE_OBSOLETE_PAGE_CONTROLS();
     REMOVE_LEGACY_ADMIN_SECTIONS();

@@ -28,13 +28,22 @@ export async function onRequest(context) {
     // POST保存设置
     if (request.method === 'POST') {
         const body = await request.json();
+        const incomingWebDAV = body?.webDAV && typeof body.webDAV === 'object' && !Array.isArray(body.webDAV)
+            ? body.webDAV
+            : {};
         const settings = {
             cloudflareApiToken: body?.cloudflareApiToken && typeof body.cloudflareApiToken === 'object'
                 ? body.cloudflareApiToken
                 : {},
-            webDAV: body?.webDAV && typeof body.webDAV === 'object'
-                ? body.webDAV
-                : {},
+            // WebDAV's upload destination is always the admin-selected default
+            // channel; do not persist duplicate uploadChannel/channelName fields.
+            webDAV: {
+                enabled: incomingWebDAV.enabled === true,
+                username: typeof incomingWebDAV.username === 'string' ? incomingWebDAV.username : '',
+                password: typeof incomingWebDAV.password === 'string' ? incomingWebDAV.password : '',
+                internalToken: typeof incomingWebDAV.internalToken === 'string' ? incomingWebDAV.internalToken : '',
+                internalTokenId: typeof incomingWebDAV.internalTokenId === 'string' ? incomingWebDAV.internalTokenId : '',
+            },
         };
 
         // WebDAV internal token 管理

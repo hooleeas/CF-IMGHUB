@@ -24,7 +24,7 @@
     clearTimeout(node.timer); node.timer = setTimeout(() => node.classList.remove('show'), 2800);
   };
   const shell = () => {
-    ROOT.innerHTML = `<main class="admin-settings-page standalone-admin"><header class="standalone-header"><h1>${h(site.siteName)} 管理面板</h1><nav><button data-action="logout" class="button button-red">退出</button><button data-action="client" class="button button-white">客户端设置</button><button data-action="security" class="button button-white">安全</button><button data-action="site" class="button button-white">站点</button><a class="button button-black" href="/">返回主页</a></nav></header><div class="admin-settings-content"><section class="upload-settings"><div class="page-header"><h2 class="first-title">上传设置</h2><div class="header-actions"><label class="admin-default-upload-channel-control"><span>上传渠道</span><select id="default-channel" class="ui-select"></select></label></div><form id="client-form" class="client-settings-form"><div class="client-settings-fields" id="client-fields"></div></form></div><div class="channel-list-container" id="channel-groups"></div><section class="admin-backup-migration-card admin-file-management-card"><div><h2>图片管理</h2><p>查看、搜索和管理已上传的图片文件。</p></div><a class="button button-black" href="${h(site.adminPath)}#File">进入</a></section><section class="admin-backup-migration-card"><div><h2>备份与迁移</h2><p>备份、恢复并查看配置、订阅与链接 JSON。</p></div><a class="button button-black" href="${h(site.adminPath)}#JSON">进入</a></section><section class="standalone-config-cards"><article><h2>Cloudflare API Token</h2><p>维护 Cloudflare API 凭据。</p><button class="button button-white" data-action="cloudflare">配置</button></article><article><h2>WebDAV</h2><p>管理 WebDAV 服务配置。</p><button class="button button-white" data-action="webdav">配置</button></article></section></section></div></main>`;
+    ROOT.innerHTML = `<main class="admin-settings-page standalone-admin"><header class="standalone-header"><h1>${h(site.siteName)} 管理面板</h1><nav><button data-action="logout" class="button button-red">退出</button><button data-action="security" class="button button-white">安全</button><button data-action="site" class="button button-white">站点</button><a class="button button-black" href="/">返回主页</a></nav></header><div class="admin-settings-content"><section class="upload-settings"><div class="page-header"><h2 class="first-title">上传设置</h2><div class="header-actions"><label class="admin-default-upload-channel-control"><span>上传渠道</span><select id="default-channel" class="ui-select"></select></label></div><form id="client-form" class="client-settings-form"><div class="client-settings-fields" id="client-fields"></div></form></div><div class="channel-list-container" id="channel-groups"></div><section class="admin-backup-migration-card admin-file-management-card"><div><h2>图片管理</h2><p>查看、搜索和管理已上传的图片文件。</p></div><a class="button button-black" href="${h(site.adminPath)}#File">进入</a></section><section class="admin-backup-migration-card"><div><h2>备份与迁移</h2><p>备份、恢复并查看配置、订阅与链接 JSON。</p></div><a class="button button-black" href="${h(site.adminPath)}#JSON">进入</a></section><section class="standalone-config-cards"><article><h2>Cloudflare API Token</h2><p>维护 Cloudflare API 凭据。</p><button class="button button-white" data-action="cloudflare">配置</button></article><article><h2>WebDAV</h2><p>管理 WebDAV 服务配置。</p><button class="button button-white" data-action="webdav">配置</button></article></section></section></div></main>`;
     ROOT.querySelector('[data-action="logout"]').onclick = async () => { try { await request('/api/auth/logout', { method: 'POST' }); location.assign('/'); } catch (e) { toast(e.message, true); } };
     ROOT.querySelectorAll('[data-action]').forEach((button) => { if (button.dataset.action !== 'logout') button.onclick = () => openSettings(button.dataset.action); });
   };
@@ -36,6 +36,7 @@
     shell();
     await Promise.all([loadChannels(), loadClientSettings()]);
   };
+  window.RENDER_STANDALONE_ADMIN = () => load().catch((error) => toast(error.message, true));
   const loadChannels = async () => {
     channels = await request('/api/manage/sysConfig/upload');
     const page = await request('/api/manage/sysConfig/page');
@@ -77,7 +78,6 @@
     form.onchange = () => { clearTimeout(timer); timer = setTimeout(async () => { const config = fields.filter((x) => labels[x.id]).map((x) => ({ id: x.id, value: form.elements[x.id].type === 'checkbox' ? form.elements[x.id].checked : form.elements[x.id].value })); try { await request('/api/manage/sysConfig/page', { method: 'POST', body: JSON.stringify({ config }) }); toast('客户端设置已保存'); } catch (e) { toast(e.message, true); } }, 350); };
   };
   const openSettings = async (type) => {
-    if (type === 'client') { document.querySelector('#client-fields')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
     const isSite = type === 'site';
     const isSecurity = type === 'security';
     const isWebdav = type === 'webdav';
@@ -89,14 +89,14 @@
       let subset = isSite ? data : isSecurity ? { username: data.username } : isWebdav ? data.webDAV : data.cloudflareApiToken;
       const body = isSite ? `<label>管理路径<input name="adminPath" required value="${h(String(subset.adminPath || '/admin').replace(/^\//, ''))}"></label><label>站点名称<input name="siteName" required value="${h(subset.siteName || site.siteName)}"></label>`
         : isSecurity ? '<label>管理员用户名<input name="username" required></label><label>新密码<input name="password" type="password" minlength="8" required></label><label>确认密码<input name="passwordConfirmation" type="password" minlength="8" required></label>'
-        : isWebdav ? `<label><input name="enabled" type="checkbox" ${subset.enabled ? 'checked' : ''}> 启用 WebDAV</label><label>用户名<input name="username" value="${h(subset.username)}"></label><label>密码<input name="password" type="password" value="${h(subset.password)}"></label><label>上传渠道 ID<input name="uploadChannel" value="${h(subset.uploadChannel)}"></label><label>渠道名称<input name="channelName" value="${h(subset.channelName)}"></label>`
+        : isWebdav ? `<label class="standalone-switch-field"><span>启用 WebDAV</span><input name="enabled" type="checkbox" role="switch" aria-label="启用 WebDAV" ${subset.enabled ? 'checked' : ''}></label><label>用户名<input name="username" value="${h(subset.username)}"></label><label>密码<input name="password" type="password" value="${h(subset.password)}"></label>`
           : isCf ? `<label>Zone ID<input name="CF_ZONE_ID" value="${h(subset.CF_ZONE_ID)}"></label><label>Cloudflare 邮箱<input name="CF_EMAIL" value="${h(subset.CF_EMAIL)}"></label><label>Cloudflare API Token / API Key<input name="CF_API_KEY" type="password" value="${h(subset.CF_API_KEY)}" autocomplete="new-password"></label>`
             : `<p>JSON 配置</p><textarea name="json" spellcheck="false">${h(JSON.stringify(subset, null, 2))}</textarea>`;
       openDialog(title, body, async (form) => {
         let payload;
         if (isSite) payload = { adminPath: form.elements.adminPath.value, siteName: form.elements.siteName.value };
         else if (isSecurity) payload = { username: form.elements.username.value, password: form.elements.password.value, passwordConfirmation: form.elements.passwordConfirmation.value };
-        else if (isWebdav) payload = { ...data, webDAV: { ...subset, enabled: form.elements.enabled.checked, username: form.elements.username.value, password: form.elements.password.value, uploadChannel: form.elements.uploadChannel.value, channelName: form.elements.channelName.value } };
+        else if (isWebdav) payload = { ...data, webDAV: { ...subset, enabled: form.elements.enabled.checked, username: form.elements.username.value, password: form.elements.password.value } };
         else if (isCf) payload = { ...data, cloudflareApiToken: { ...subset, CF_ZONE_ID: form.elements.CF_ZONE_ID.value, CF_EMAIL: form.elements.CF_EMAIL.value, CF_API_KEY: form.elements.CF_API_KEY.value } };
         else { let value; try { value = JSON.parse(form.elements.json.value); } catch { throw new Error('JSON 格式无效'); } payload = { ...data, cloudflareApiToken: value }; }
         const result = await request(url, { method: 'POST', body: JSON.stringify(payload) });
