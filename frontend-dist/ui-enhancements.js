@@ -948,19 +948,21 @@
     ROOT.id = 'admin-backup-root';
     ROOT.innerHTML = `
       <header class="migration-header">
-        <div class="migration-header-main"><h1>备份与迁移</h1><p class="subtitle">共 <span id="entry-count" data-backup-count>0</span> 项 KV 数据；导入时同名键覆盖，其他数据保留</p></div>
+        <div class="migration-header-main"><h1>备份与迁移</h1><p class="subtitle">共 <span id="entry-count" data-backup-count>0</span> 项数据库数据</p></div>
         <div class="migration-actions">
           <button type="button" class="danger" id="reset-open" data-backup-action="reset">恢复出厂设置</button>
           <button type="button" id="export-all" data-backup-action="export">导出</button>
           <button type="button" class="secondary" id="import-all" data-backup-action="import">导入</button>
           <button type="button" class="secondary" id="refresh-all" data-backup-action="refresh">刷新</button>
+          <button type="button" class="secondary" id="database-storage-open" data-backup-action="database-storage">更改存储</button>
           <a class="back-link ui-button ui-button-secondary" data-backup-home>返回管理面板</a>
         </div>
       </header>
       <div id="json-list" class="json-list" aria-live="polite"></div>
       <input class="admin-backup-file" type="file" accept=".json,application/json" hidden>
       <div class="overlay" id="view-overlay" aria-hidden="true"><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="view-title"><div class="dialog-header"><h2 id="view-title"></h2><button type="button" class="dialog-close secondary" id="view-close" aria-label="关闭">×</button></div><pre class="json-value" id="view-value"></pre></section></div>
-      <div class="overlay" id="reset-overlay" aria-hidden="true"><section class="dialog reset-dialog" role="dialog" aria-modal="true" aria-labelledby="reset-title"><h2 id="reset-title">恢复出厂设置</h2><p class="reset-warning">此操作会永久删除当前 KV 中的全部数据，包括管理员设置、文件记录及索引。请先导出备份；删除后无法撤销。</p><label>输入 DELETE 以确认<input id="reset-confirmation" type="text" autocomplete="off" required></label><div class="dialog-actions"><button type="button" class="secondary" id="reset-cancel">取消</button><button type="button" class="danger" id="reset-confirm">确认删除全部数据</button></div></section></div>
+      <div class="overlay" id="reset-overlay" aria-hidden="true"><section class="dialog reset-dialog" role="dialog" aria-modal="true" aria-labelledby="reset-title"><h2 id="reset-title">恢复出厂设置</h2><p class="reset-warning">此操作会永久删除当前数据库中的全部配置、文件记录及索引。请先导出备份；删除后无法撤销。</p><label>输入 DELETE 以确认<input id="reset-confirmation" type="text" autocomplete="off" required></label><div class="dialog-actions"><button type="button" class="secondary" id="reset-cancel">取消</button><button type="button" class="danger" id="reset-confirm">确认删除全部数据</button></div></section></div>
+      <div class="overlay" id="database-storage-overlay" aria-hidden="true"><section class="dialog reset-dialog" role="dialog" aria-modal="true" aria-labelledby="database-storage-title"><div class="dialog-header"><h2 id="database-storage-title">更改元数据数据库</h2><button type="button" class="dialog-close secondary" data-storage-close aria-label="关闭">×</button></div><p id="database-storage-current">正在读取当前数据库…</p><fieldset id="database-storage-options" style="display:grid;gap:10px;margin:0;padding:14px;border:1px solid rgba(120,130,140,.35);border-radius:12px"><legend>选择目标数据库</legend><label><input type="radio" name="database-storage-target" value="KV"> KV</label><label><input type="radio" name="database-storage-target" value="D1"> D1</label></fieldset><p class="reset-warning" style="color:inherit">迁移会复制并核对配置、图片路径和元数据；核对通过后自动切换并清空原数据库。R2、Telegram、S3、WebDAV 等图片文件不会移动。</p><div class="dialog-actions"><button type="button" class="secondary" data-storage-close>取消</button><button type="button" class="secondary" id="database-storage-switch">迁移并切换</button></div></section></div>
       <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
       `;
     document.body.appendChild(ROOT);
@@ -972,6 +974,10 @@
     const TOAST = ROOT.querySelector('#toast');
     const VIEW_OVERLAY = ROOT.querySelector('#view-overlay');
     const RESET_OVERLAY = ROOT.querySelector('#reset-overlay');
+    const DATABASE_STORAGE_OVERLAY = ROOT.querySelector('#database-storage-overlay');
+    const DATABASE_STORAGE_CURRENT = ROOT.querySelector('#database-storage-current');
+    const DATABASE_STORAGE_SWITCH = ROOT.querySelector('#database-storage-switch');
+    let DATABASE_STATUS = null;
     const ENTRIES = [];
     const DISPLAY_ENTRIES = [];
     let TOAST_TIMER;
@@ -985,7 +991,8 @@
       TOAST_TIMER = setTimeout(() => { TOAST.hidden = true; }, 2600);
     };
     const UPDATE_SUBTITLE = () => {
-      SUBTITLE.textContent = `共 ${ENTRIES.length} 项 KV 数据；导入时同名键覆盖，其他数据保留`;
+      const TYPE = DATABASE_STATUS?.current || 'KV';
+      SUBTITLE.textContent = `当前使用 ${TYPE}；共 ${ENTRIES.length} 项配置、图片路径与元数据`;
     };
     const REQUEST_JSON = async (URL, OPTIONS) => {
       const RESPONSE = await fetch(URL, { credentials: 'same-origin', ...OPTIONS });
@@ -1004,15 +1011,16 @@
       LIST.replaceChildren();
       ENTRIES.length = 0;
       DISPLAY_ENTRIES.length = 0;
-      SUBTITLE.textContent = '正在读取 KV 数据…';
+      DATABASE_STATUS = await REQUEST_JSON('/api/manage/batch/kv?database=status');
+      SUBTITLE.textContent = `正在读取 ${DATABASE_STATUS.current} 数据…`;
       let CURSOR = null;
       do {
         const QUERY = CURSOR ? `?cursor=${encodeURIComponent(CURSOR)}` : '';
         const PAGE = await REQUEST_JSON(`/api/manage/batch/kv${QUERY}`);
-        if (!Array.isArray(PAGE.entries)) throw new Error('KV 数据列表格式无效。');
+        if (!Array.isArray(PAGE.entries)) throw new Error('数据库列表格式无效。');
         ENTRIES.push(...PAGE.entries);
         CURSOR = PAGE.cursor || null;
-        SUBTITLE.textContent = `正在读取 ${ENTRIES.length} 项 KV 数据…`;
+        SUBTITLE.textContent = `正在读取 ${ENTRIES.length} 项数据库数据…`;
       } while (CURSOR);
 
       ENTRIES.sort((LEFT, RIGHT) => LEFT.name.localeCompare(RIGHT.name));
@@ -1065,13 +1073,13 @@
         const OBJECT_URL = URL.createObjectURL(BLOB);
         const ANCHOR = document.createElement('a');
         ANCHOR.href = OBJECT_URL;
-        ANCHOR.download = `cf-imghub-kv-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        ANCHOR.download = `cf-imghub-database-backup-${new Date().toISOString().slice(0, 10)}.json`;
         document.body.appendChild(ANCHOR);
         ANCHOR.click();
         ANCHOR.remove();
         setTimeout(() => URL.revokeObjectURL(OBJECT_URL), 1000);
         UPDATE_SUBTITLE();
-        SHOW_MESSAGE('已导出全部 KV 数据。');
+        SHOW_MESSAGE('已导出全部数据库数据。');
       } catch (ERROR) {
         SUBTITLE.textContent = ERROR.message;
         SHOW_MESSAGE(ERROR.message, true);
@@ -1095,7 +1103,7 @@
       } else if (ACTION === 'refresh') {
         try {
           await LOAD_ENTRIES();
-          SHOW_MESSAGE('KV 数据已刷新。');
+        SHOW_MESSAGE('数据库数据已刷新。');
         } catch (ERROR) {
           SUBTITLE.textContent = ERROR.message;
           SHOW_MESSAGE(ERROR.message, true);
@@ -1104,6 +1112,19 @@
         FILE_INPUT.click();
       } else if (ACTION === 'reset') {
         OPEN_OVERLAY(RESET_OVERLAY);
+      } else if (ACTION === 'database-storage') {
+        try {
+          DATABASE_STATUS = await REQUEST_JSON('/api/manage/batch/kv?database=status');
+          DATABASE_STORAGE_CURRENT.textContent = `当前数据库：${DATABASE_STATUS.current}。可用：${Object.entries(DATABASE_STATUS.available).filter(([, AVAILABLE]) => AVAILABLE).map(([TYPE]) => TYPE).join('、') || '无'}`;
+          ROOT.querySelectorAll('[name="database-storage-target"]').forEach((OPTION) => {
+            OPTION.disabled = !DATABASE_STATUS.available[OPTION.value];
+            OPTION.checked = OPTION.value === DATABASE_STATUS.current;
+          });
+          DATABASE_STORAGE_SWITCH.disabled = true;
+          OPEN_OVERLAY(DATABASE_STORAGE_OVERLAY);
+        } catch (ERROR) {
+          SHOW_MESSAGE(ERROR.message, true);
+        }
       }
 
       const SHOW = EVENT.target.closest('[data-backup-index]');
@@ -1126,6 +1147,33 @@
       if (EVENT.target === VIEW_OVERLAY) CLOSE_OVERLAY(VIEW_OVERLAY);
       if (EVENT.target === RESET_OVERLAY) CLOSE_OVERLAY(RESET_OVERLAY);
       if (EVENT.target.closest('#reset-cancel')) CLOSE_OVERLAY(RESET_OVERLAY);
+      if (EVENT.target.closest('[data-storage-close]') || EVENT.target === DATABASE_STORAGE_OVERLAY) CLOSE_OVERLAY(DATABASE_STORAGE_OVERLAY);
+      if (EVENT.target.closest('#database-storage-switch')) {
+        const TARGET = ROOT.querySelector('[name="database-storage-target"]:checked')?.value;
+        if (!TARGET) {
+          SHOW_MESSAGE('请选择一个已绑定的数据库。', true);
+          return;
+        }
+        const BUTTON = EVENT.target.closest('#database-storage-switch');
+        BUTTON.disabled = true;
+        DATABASE_STORAGE_CURRENT.textContent = `正在将配置、图片路径和元数据迁移到 ${TARGET}，核对通过后会自动切换并清理原数据库…`;
+        try {
+          const RESULT = await REQUEST_JSON('/api/manage/batch/kv', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'switch_database', target: TARGET }),
+          });
+          DATABASE_STATUS = await REQUEST_JSON('/api/manage/batch/kv?database=status');
+          CLOSE_OVERLAY(DATABASE_STORAGE_OVERLAY);
+          SHOW_MESSAGE(RESULT.sourceCleared === false ? `已切换到 ${TARGET}，但原数据库清理失败：${RESULT.cleanupError || '请检查数据库绑定'}` : `已核对 ${RESULT.verified ?? 0} 项并切换到 ${TARGET}。` , RESULT.sourceCleared === false);
+          await LOAD_ENTRIES();
+        } catch (ERROR) {
+          DATABASE_STORAGE_CURRENT.textContent = ERROR.message;
+          SHOW_MESSAGE(ERROR.message, true);
+        } finally {
+          BUTTON.disabled = false;
+        }
+      }
       if (EVENT.target.closest('#reset-confirm')) {
         const CONFIRMATION = ROOT.querySelector('#reset-confirmation').value;
         if (CONFIRMATION !== 'DELETE') {
@@ -1141,7 +1189,7 @@
             body: JSON.stringify({ type: 'factory_reset', confirmation: CONFIRMATION }),
           });
           CLOSE_OVERLAY(RESET_OVERLAY);
-          SHOW_MESSAGE(`已删除 ${RESULT.deleted} 项 KV 数据。`);
+          SHOW_MESSAGE(`已删除 ${RESULT.deleted} 项数据库数据。`);
           setTimeout(() => window.location.assign(CURRENT_ADMIN_PATH), 900);
         } catch (ERROR) {
           SHOW_MESSAGE(ERROR.message, true);
@@ -1149,10 +1197,16 @@
         }
       }
     });
+    ROOT.addEventListener('change', (EVENT) => {
+      if (EVENT.target.name === 'database-storage-target') {
+        DATABASE_STORAGE_SWITCH.disabled = EVENT.target.value === DATABASE_STATUS?.current;
+      }
+    });
     document.addEventListener('keydown', (EVENT) => {
       if (EVENT.key === 'Escape') {
         CLOSE_OVERLAY(VIEW_OVERLAY);
         CLOSE_OVERLAY(RESET_OVERLAY);
+        CLOSE_OVERLAY(DATABASE_STORAGE_OVERLAY);
       }
     });
     FILE_INPUT.addEventListener('change', async () => {

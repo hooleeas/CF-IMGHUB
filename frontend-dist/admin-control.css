@@ -1133,6 +1133,30 @@ body.migration-page #app {
   display: none;
 }
 
+#admin-backup-root #database-storage-options {
+  color: inherit;
+  font: inherit;
+}
+
+#admin-backup-root #database-storage-options label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 36px;
+  font-weight: 650;
+}
+
+#admin-backup-root #database-storage-options input {
+  width: 18px;
+  height: 18px;
+  accent-color: #20a464;
+}
+
+#admin-backup-root #database-storage-switch:disabled {
+  cursor: progress;
+  opacity: .65;
+}
+
 @media (max-width: 620px) {
   #admin-backup-root {
     width: calc(100% - 28px);

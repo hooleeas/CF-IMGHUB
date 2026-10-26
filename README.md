@@ -8,6 +8,7 @@
 
 - Upload, browse, manage, and share files through a web interface and API.
 - Use storage providers including Telegram, Discord, Cloudflare R2, S3, Hugging Face, and WebDAV.
+- Store application configuration and image metadata in KV or D1, separately from image files.
 - Configure access control and site settings from the administration panel.
 - Deploy with Docker, Cloudflare Pages, or Cloudflare Workers.
 
@@ -71,11 +72,13 @@ docker compose down
 
 ### Cloudflare Pages
 
-Connect this repository to Cloudflare Pages. Use `None` as the framework preset, leave the build command empty, and set the build output directory to `frontend-dist`. In Pages → Settings → Functions → Bindings, configure the `KV` and `R2` bindings using the names expected by the code, and add the required environment variables. Pages will deploy automatically after pushes to the production branch.
+Connect this repository to Cloudflare Pages with `None` as the framework preset, `npm ci --omit=dev --omit=optional` as the build command, and `frontend-dist` as the build output directory. The frontend assets are already included in the repository; the build command installs the runtime dependencies required to bundle Pages Functions. Leaving the build command empty causes Functions bundling to fail because npm dependencies are unavailable. In Pages → Settings → Functions → Bindings, configure at least one metadata database binding (`KV` or `D1`) and configure the credentials and bindings for at least one image storage provider. KV/D1 store application configuration, image paths, and metadata; image providers such as R2, Telegram, S3, Discord, Hugging Face, and WebDAV store the actual image files. R2 is required only when you choose R2 as your image provider. Add the environment variables required by the selected provider. Pages deploys automatically after pushes to the production branch.
+
+D1 tables are created automatically on first use. When both KV and D1 are bound, KV is selected initially; use **Backup & Migration → Change storage** to copy and verify metadata before switching. After verification, the old database is cleared automatically. Image files in R2 or other providers are not moved.
 
 ### Cloudflare Workers
 
-The Worker configuration is in [`deploy/worker/wrangler.toml`](./deploy/worker/wrangler.toml). Configure the required storage bindings (D1 or KV, and optionally R2) before deploying. The project also includes a GitHub Actions workflow for Worker deployments; see [`.github/workflows/deploy-worker.yml`](./.github/workflows/deploy-worker.yml) for its required secrets and behavior.
+The Worker configuration is in [`deploy/worker/wrangler.toml`](./deploy/worker/wrangler.toml). Before deploying, configure one metadata database binding (`D1` or `KV`) and at least one image storage provider. The database stores configuration, image paths, and metadata; providers such as R2, Telegram, S3, Discord, Hugging Face, and WebDAV store image files. Bind an R2 bucket only if you use R2 as an image provider, and configure the selected provider's required credentials. The project also includes a GitHub Actions workflow for Worker deployments; see [`.github/workflows/deploy-worker.yml`](./.github/workflows/deploy-worker.yml) for its required secrets and behavior.
 
 ## Local development
 
@@ -86,7 +89,7 @@ npm ci
 npm start
 ```
 
-The local Pages development server is available at [http://localhost:8080](http://localhost:8080). Local KV and R2 data is stored under `./data`.
+The local Pages development server is available at [http://localhost:8080](http://localhost:8080). Local database and image files are stored under `./data`.
 
 Run the test suite with:
 

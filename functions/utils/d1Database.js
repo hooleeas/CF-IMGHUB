@@ -8,9 +8,121 @@ import {
     writeSystemConfigCategory,
 } from './sysConfigStorage.js';
 
+const schemaInitialization = new WeakMap();
+const INDEX_METADATA_MIGRATION_PREFIX = '__cf_imghub_internal_index_metadata__:';
+
 class D1Database {
     constructor(db) {
         this.db = db;
+    }
+
+    ensureSchema() {
+        let initialized = schemaInitialization.get(this.db);
+        if (!initialized) {
+            initialized = (async () => {
+                const statements = [
+                    `CREATE TABLE IF NOT EXISTS files (id TEXT PRIMARY KEY, value TEXT, metadata TEXT NOT NULL DEFAULT '{}', file_name TEXT, file_type TEXT, file_size TEXT, upload_ip TEXT, upload_address TEXT, list_type TEXT, timestamp INTEGER, label TEXT, directory TEXT, channel TEXT, channel_name TEXT, tg_file_id TEXT, tg_chat_id TEXT, tg_bot_token TEXT, is_chunked BOOLEAN DEFAULT FALSE, tags TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
+                    `CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, category TEXT, description TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
+                    `CREATE TABLE IF NOT EXISTS index_operations (id TEXT PRIMARY KEY, type TEXT NOT NULL, timestamp INTEGER NOT NULL, data TEXT NOT NULL, processed BOOLEAN DEFAULT FALSE, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
+                    `CREATE TABLE IF NOT EXISTS index_metadata (key TEXT PRIMARY KEY, last_updated INTEGER, total_count INTEGER DEFAULT 0, last_operation_id TEXT, chunk_count INTEGER DEFAULT 0, chunk_size INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
+                    `CREATE TABLE IF NOT EXISTS other_data (key TEXT PRIMARY KEY, value TEXT NOT NULL, type TEXT, description TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`,
+                ];
+                for (const sql of statements) await this.db.prepare(sql).run();
+                const columns = await this.db.prepare('PRAGMA table_info(files)').all();
+                if (!(columns.results || []).some((column) => column.name === 'tags')) {
+                    await this.db.prepare('ALTER TABLE files ADD COLUMN tags TEXT').run();
+                }
+                for (const sql of [
+                    'CREATE INDEX IF NOT EXISTS idx_files_timestamp ON files(timestamp DESC)',
+                    'CREATE INDEX IF NOT EXISTS idx_files_directory ON files(directory)',
+                    'CREATE INDEX IF NOT EXISTS idx_files_channel ON files(channel)',
+                    'CREATE INDEX IF NOT EXISTS idx_files_file_type ON files(file_type)',
+                    'CREATE INDEX IF NOT EXISTS idx_files_upload_ip ON files(upload_ip)',
+                    'CREATE INDEX IF NOT EXISTS idx_files_tags ON files(tags)',
+                    'CREATE INDEX IF NOT EXISTS idx_settings_category ON settings(category)',
+                    'CREATE INDEX IF NOT EXISTS idx_index_operations_timestamp ON index_operations(timestamp)',
+                    'CREATE INDEX IF NOT EXISTS idx_index_operations_processed ON index_operations(processed)',
+                    'CREATE INDEX IF NOT EXISTS idx_index_operations_type ON index_operations(type)',
+                    'CREATE INDEX IF NOT EXISTS idx_other_data_type ON other_data(type)',
+                ]) await this.db.prepare(sql).run();
+            })();
+            schemaInitialization.set(this.db, initialized);
+        }
+        return initialized;
+    }
+
+    async normalizeSystemConfig() {
+        const [settings, legacyFile] = await Promise.all([
+            this.db.prepare(`SELECT key FROM settings
+                WHERE key = 'CONFIG' OR key LIKE 'manage@sysConfig@%' OR key LIKE 'MANAGE@SYSCONFIG@%' LIMIT 1`).first(),
+            this.db.prepare("SELECT id FROM files WHERE id = 'CONFIG' LIMIT 1").first(),
+        ]);
+        if (!settings && !legacyFile) return;
+        await readSystemConfig(
+            this.getSetting.bind(this),
+            (key, value) => this.putSetting(key, value, 'SYSCONFIG'),
+            this.deleteSetting.bind(this)
+        );
+        if (legacyFile) await this.deleteFile('CONFIG');
+    }
+
+    async listMigrationRecords() {
+        await this.normalizeSystemConfig();
+        const [files, settings, operations, indexMetadata, otherData] = await Promise.all([
+            this.db.prepare('SELECT id, value, metadata FROM files ORDER BY id').all(),
+            this.db.prepare('SELECT key, value FROM settings ORDER BY key').all(),
+            this.db.prepare('SELECT id, type, timestamp, data FROM index_operations ORDER BY id').all(),
+            this.db.prepare('SELECT * FROM index_metadata ORDER BY key').all(),
+            this.db.prepare('SELECT key, value FROM other_data ORDER BY key').all(),
+        ]);
+        const records = new Map();
+        // Preserve records from the legacy `other_data` table, then let the
+        // storage table used by the active adapter win on duplicate logical keys.
+        for (const row of otherData.results || []) {
+            records.set(row.key, { name: row.key, value: row.value ?? '', metadata: null });
+        }
+        for (const row of files.results || []) {
+            let metadata = {};
+            try { metadata = JSON.parse(row.metadata || '{}'); } catch { throw new Error(`D1 图片记录“${row.id}”的 metadata JSON 无效。`); }
+            records.set(row.id, { name: row.id, value: row.value ?? '', metadata });
+        }
+        for (const row of settings.results || []) records.set(row.key, { name: row.key, value: row.value ?? '', metadata: null });
+        for (const row of operations.results || []) {
+            const record = {
+                name: `manage@index@operation_${row.id}`,
+                value: JSON.stringify({ type: row.type, timestamp: row.timestamp, data: JSON.parse(row.data || 'null') }),
+                metadata: null,
+            };
+            records.set(record.name, record);
+        }
+        for (const row of indexMetadata.results || []) {
+            const record = {
+                name: INDEX_METADATA_MIGRATION_PREFIX + row.key,
+                value: JSON.stringify({
+                    last_updated: row.last_updated,
+                    total_count: row.total_count,
+                    last_operation_id: row.last_operation_id,
+                    chunk_count: row.chunk_count,
+                    chunk_size: row.chunk_size,
+                }),
+                metadata: null,
+            };
+            records.set(record.name, record);
+        }
+        return [...records.values()].sort((left, right) => left.name.localeCompare(right.name));
+    }
+
+    async listMigrationRecordKeys(offset = 0, limit = 100) {
+        await this.normalizeSystemConfig();
+        const result = await this.db.prepare(`
+            SELECT id AS name FROM files
+            UNION SELECT key AS name FROM settings WHERE key != ?
+            UNION SELECT 'manage@index@operation_' || id AS name FROM index_operations
+            UNION SELECT '__cf_imghub_internal_index_metadata__:' || key AS name FROM index_metadata
+            UNION SELECT key AS name FROM other_data
+            ORDER BY name LIMIT ? OFFSET ?
+        `).bind('manage@system@databaseProvider', limit, offset).all();
+        return (result.results || []).map((row) => row.name);
     }
 }
 
@@ -164,8 +276,10 @@ D1Database.prototype.putSetting = function(key, value, category) {
 D1Database.prototype.getSetting = function(key) {
     var stmt = this.db.prepare('SELECT value FROM settings WHERE key = ?');
     return stmt.bind(key).first().then(function(result) {
-        return result ? result.value : null;
-    });
+        if (result) return result.value;
+        if (key === 'CONFIG') return this.getFile('CONFIG').then(function(file) { return file ? file.value : null; });
+        return null;
+    }.bind(this));
 };
 
 /**
@@ -324,7 +438,22 @@ D1Database.prototype.extractMetadataFields = function(metadata) {
 D1Database.prototype.put = function(key, value, options) {
     options = options || {};
 
-    if (key.startsWith('manage@index@operation_')) {
+    if (key === 'CONFIG') {
+        return this.putSetting(key, value, 'SYSCONFIG').then(() => this.deleteFile(key));
+    } else if (key.startsWith(INDEX_METADATA_MIGRATION_PREFIX)) {
+        var indexMetadataKey = key.slice(INDEX_METADATA_MIGRATION_PREFIX.length);
+        var indexMetadata = JSON.parse(value);
+        return this.db.prepare(`INSERT OR REPLACE INTO index_metadata
+            (key, last_updated, total_count, last_operation_id, chunk_count, chunk_size)
+            VALUES (?, ?, ?, ?, ?, ?)`).bind(
+            indexMetadataKey,
+            indexMetadata.last_updated ?? null,
+            indexMetadata.total_count ?? 0,
+            indexMetadata.last_operation_id ?? null,
+            indexMetadata.chunk_count ?? 0,
+            indexMetadata.chunk_size ?? 0
+        ).run();
+    } else if (key.startsWith('manage@index@operation_')) {
         var operationId = key.replace('manage@index@operation_', '');
         var operation = JSON.parse(value);
         return this.putIndexOperation(operationId, operation);
@@ -355,7 +484,9 @@ D1Database.prototype.put = function(key, value, options) {
 D1Database.prototype.get = function(key) {
     var self = this;
 
-    if (key.startsWith('manage@index@operation_')) {
+    if (key === 'CONFIG') {
+        return this.getSetting(key);
+    } else if (key.startsWith('manage@index@operation_')) {
         var operationId = key.replace('manage@index@operation_', '');
         return this.getIndexOperation(operationId).then(function(operation) {
             return operation ? JSON.stringify(operation) : null;
@@ -386,12 +517,25 @@ D1Database.prototype.get = function(key) {
  * 通用的getWithMetadata方法
  */
 D1Database.prototype.getWithMetadata = function(key) {
-    if (key.startsWith('manage@') || getSystemConfigStorageKeys(key)) {
+    if (key.startsWith(INDEX_METADATA_MIGRATION_PREFIX)) {
+        const indexMetadataKey = key.slice(INDEX_METADATA_MIGRATION_PREFIX.length);
+        return this.db.prepare('SELECT last_updated, total_count, last_operation_id, chunk_count, chunk_size FROM index_metadata WHERE key = ?')
+            .bind(indexMetadataKey).first().then((row) => row ? { value: JSON.stringify(row), metadata: {} } : null);
+    }
+    if (key === 'CONFIG' || key.startsWith('manage@') || getSystemConfigStorageKeys(key)) {
         return this.get(key).then(function(value) {
-            return value ? { value: value, metadata: {} } : null;
-        });
+            if (value !== null && value !== undefined) return { value: value, metadata: {} };
+            return this.db.prepare('SELECT value FROM other_data WHERE key = ?').bind(key).first().then(function(row) {
+                return row ? { value: row.value, metadata: {} } : null;
+            });
+        }.bind(this));
     } else {
-        return this.getFileWithMetadata(key);
+        return this.getFileWithMetadata(key).then(function(file) {
+            if (file) return file;
+            return this.db.prepare('SELECT value FROM other_data WHERE key = ?').bind(key).first().then(function(row) {
+                return row ? { value: row.value, metadata: {} } : null;
+            });
+        }.bind(this));
     }
 };
 
@@ -399,11 +543,17 @@ D1Database.prototype.getWithMetadata = function(key) {
  * 通用的delete方法
  */
 D1Database.prototype.delete = function(key) {
-    if (key.startsWith('manage@index@operation_')) {
+    if (key === 'CONFIG') {
+        return Promise.all([this.deleteSetting(key), this.deleteFile(key)]);
+    } else if (key.startsWith(INDEX_METADATA_MIGRATION_PREFIX)) {
+        return this.db.prepare('DELETE FROM index_metadata WHERE key = ?')
+            .bind(key.slice(INDEX_METADATA_MIGRATION_PREFIX.length)).run();
+    } else if (key.startsWith('manage@index@operation_')) {
         var operationId = key.replace('manage@index@operation_', '');
         return this.deleteIndexOperation(operationId);
     } else if (getSystemConfigStorageKeys(key)) {
         var configKeys = getSystemConfigStorageKeys(key);
+        var self = this;
         return deleteSystemConfigCategory(
             this.getSetting.bind(this),
             function(storageKey, storageValue) {
@@ -442,6 +592,16 @@ D1Database.prototype.list = function(options) {
         return this.listFiles(options);
     }
 };
+
+// D1 bindings are initialized automatically on first use; no dashboard SQL step is needed.
+for (const methodName of Object.getOwnPropertyNames(D1Database.prototype)) {
+    if (methodName === 'constructor' || methodName === 'ensureSchema') continue;
+    const method = D1Database.prototype[methodName];
+    if (typeof method !== 'function') continue;
+    D1Database.prototype[methodName] = function(...args) {
+        return this.ensureSchema().then(() => method.apply(this, args));
+    };
+}
 
 // 导出构造函数
 export { D1Database };

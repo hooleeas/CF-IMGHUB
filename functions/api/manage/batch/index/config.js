@@ -4,7 +4,7 @@
  * 返回根据数据库类型确定的分块大小等配置信息
  */
 
-import { checkDatabaseConfig } from '../../../../utils/databaseAdapter.js';
+import { isUsingD1Database } from '../../../../utils/databaseAdapter.js';
 
 // CORS 跨域响应头
 const corsHeaders = {
@@ -38,13 +38,13 @@ export async function onRequestGet(context) {
   const { env } = context;
 
   try {
-    const config = checkDatabaseConfig(env);
-    const chunkSize = config.usingD1 ? INDEX_CHUNK_SIZE_D1 : INDEX_CHUNK_SIZE_KV;
+    const usingD1 = await isUsingD1Database(env);
+    const chunkSize = usingD1 ? INDEX_CHUNK_SIZE_D1 : INDEX_CHUNK_SIZE_KV;
 
     return jsonResponse({
       success: true,
       chunkSize,
-      databaseType: config.usingD1 ? 'd1' : 'kv',
+      databaseType: usingD1 ? 'd1' : 'kv',
     });
   } catch (error) {
     return jsonResponse({ success: false, error: error.message }, 500);

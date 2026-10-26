@@ -3,7 +3,7 @@ import { createResponse, selectConsistentChannel, getUploadIp, buildUniqueFileId
 import { TelegramAPI } from '../utils/storage/telegramAPI';
 import { DiscordAPI } from '../utils/storage/discordAPI';
 import { S3Client, CreateMultipartUploadCommand, UploadPartCommand, AbortMultipartUploadCommand } from "@aws-sdk/client-s3";
-import { getDatabase, checkDatabaseConfig } from '../utils/databaseAdapter.js';
+import { getDatabase, isUsingD1Database } from '../utils/databaseAdapter.js';
 
 // 初始化分块上传
 export async function initializeChunkedUpload(context) {
@@ -152,7 +152,7 @@ export async function handleChunkUpload(context) {
         };
 
         // 立即保存分块记录和数据，设置过期时间
-        const { usingD1 } = checkDatabaseConfig(env);
+        const usingD1 = await isUsingD1Database(env);
         await db.put(chunkKey, usingD1 ? '' : chunkData, {
             metadata: initialChunkMetadata,
             expirationTtl: 3600 // 1小时过期
@@ -232,7 +232,7 @@ async function uploadChunkToStorageWithTimeout(context, chunkIndex, totalChunks,
 
         // 超时或失败时，更新状态为超时/失败
         try {
-            const { usingD1 } = checkDatabaseConfig(env);
+            const usingD1 = await isUsingD1Database(env);
             const chunkRecord = await db.getWithMetadata(chunkKey, { type: 'arrayBuffer' });
             if (chunkRecord && chunkRecord.metadata) {
                 const isTimeout = error.message === 'Upload timeout';
@@ -325,7 +325,7 @@ async function uploadChunkToStorage(context, chunkIndex, totalChunks, uploadId, 
                 };
 
                 // 保留原始数据以便重试（D1模式下不保存二进制数据，避免SQLITE_TOOBIG）
-                const { usingD1: isD1 } = checkDatabaseConfig(env);
+                const isD1 = await isUsingD1Database(env);
                 await db.put(chunkKey, isD1 ? '' : chunkData, {
                     metadata: failedMetadata,
                     expirationTtl: 3600 // 1小时过期
@@ -340,7 +340,7 @@ async function uploadChunkToStorage(context, chunkIndex, totalChunks, uploadId, 
 
         // 发生异常时，确保保留原始数据并标记为失败
         try {
-            const { usingD1: isD1 } = checkDatabaseConfig(env);
+                const isD1 = await isUsingD1Database(env);
             const chunkRecord = await db.getWithMetadata(chunkKey, { type: 'arrayBuffer' });
             if (chunkRecord && chunkRecord.metadata) {
                 const errorMetadata = {
@@ -863,7 +863,7 @@ async function retrySingleChunk(context, chunk, uploadChannel, maxRetries = 5, r
         const totalChunks = chunkRecord.metadata?.totalChunks || 1;
 
         // 更新重试状态
-        const { usingD1: isD1 } = checkDatabaseConfig(env);
+        const isD1 = await isUsingD1Database(env);
         const retryMetadata = {
             ...chunkRecord.metadata,
             status: 'retrying',
@@ -931,7 +931,7 @@ async function retrySingleChunk(context, chunk, uploadChannel, maxRetries = 5, r
 
         // 更新重试失败状态
         try {
-            const { usingD1: isD1Retry } = checkDatabaseConfig(env);
+            const isD1Retry = await isUsingD1Database(env);
             const chunkRecord = await db.getWithMetadata(chunk.key, { type: 'arrayBuffer' });
             if (chunkRecord) {
                 const failedRetryMetadata = {
@@ -1044,7 +1044,7 @@ export async function checkChunkUploadStatuses(env, uploadId, totalChunks) {
                     status = 'timeout';
 
                     // 更新状态为超时
-                    const { usingD1: isD1Status } = checkDatabaseConfig(env);
+                    const isD1Status = await isUsingD1Database(env);
                     const timeoutMetadata = {
                         ...chunkRecord.metadata,
                         status: 'timeout',

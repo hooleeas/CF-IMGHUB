@@ -12,6 +12,7 @@ import {
 } from './sysConfigStorage.js';
 
 const IMAGE_KEY_PREFIX = 'IMG_';
+export const DATABASE_PROVIDER_KEY = 'manage@system@databaseProvider';
 const IMAGE_KEY_PATTERN = /^IMG_[A-Z0-9]{20}$/;
 const IMAGE_ID_LENGTH = 20;
 const IMAGE_ID_SPACE = 36n ** BigInt(IMAGE_ID_LENGTH);
@@ -173,6 +174,59 @@ export function createDatabaseAdapter(env) {
         console.error('No database configured. Please configure either KV (env.KV) or D1 (env.D1).');
         return null;
     }
+}
+
+export function hasKVDatabase(env) {
+    return Boolean(env?.KV && typeof env.KV.get === 'function');
+}
+
+export function hasD1Database(env) {
+    return Boolean(env?.D1 && typeof env.D1.prepare === 'function');
+}
+
+export async function getActiveDatabaseType(env) {
+    const hasKV = hasKVDatabase(env);
+    const hasD1 = hasD1Database(env);
+    if (!hasKV && !hasD1) return null;
+    if (hasKV) {
+        const selected = await env.KV.get(DATABASE_PROVIDER_KEY);
+        if (selected === 'KV') return 'KV';
+        if (selected === 'D1' && hasD1) return 'D1';
+    }
+    if (hasD1) {
+        try {
+            const d1 = new D1Database(env.D1);
+            const selected = await d1.getSetting(DATABASE_PROVIDER_KEY);
+            if (selected === 'D1') return 'D1';
+            if (selected === 'KV' && hasKV) return 'KV';
+        } catch (error) {
+            if (!hasKV) throw error;
+            console.error('Could not read the D1 database selector; using KV fallback:', error);
+        }
+    }
+    // Both bindings with no marker means first deployment: KV is the default.
+    const defaultType = hasKV ? 'KV' : 'D1';
+    if (hasD1) {
+        try {
+            await setActiveDatabaseType(env, defaultType);
+        } catch (error) {
+            console.error(`Could not persist the initial ${defaultType} database selection:`, error);
+        }
+    }
+    return defaultType;
+}
+
+export async function isUsingD1Database(env) {
+    return (await getActiveDatabaseType(env)) === 'D1';
+}
+
+export async function setActiveDatabaseType(env, type) {
+    if (type === 'KV' && !hasKVDatabase(env)) throw new Error('未绑定 KV 数据库。');
+    if (type === 'D1' && !hasD1Database(env)) throw new Error('未绑定 D1 数据库。');
+    // Update both selectors before deleting the old store. KV is checked first,
+    // so writing D1 first leaves the old backend active until the KV marker lands.
+    if (hasD1Database(env)) await new D1Database(env.D1).putSetting(DATABASE_PROVIDER_KEY, type, 'SYSTEM');
+    if (hasKVDatabase(env)) await env.KV.put(DATABASE_PROVIDER_KEY, type);
 }
 
 /**
@@ -570,11 +624,22 @@ class KVAdapter {
  * @returns {Object} 数据库实例
  */
 export function getDatabase(env) {
-    var adapter = createDatabaseAdapter(env);
-    if (!adapter) {
+    if (!hasKVDatabase(env) && !hasD1Database(env)) {
         throw new Error('Database not configured. Please configure D1 database (env.D1) or KV storage (env.KV).');
     }
-    return adapter;
+    return new Proxy({}, {
+        get(_target, property) {
+            if (property === 'then') return undefined;
+            return (...args) => getActiveDatabaseType(env).then((type) => {
+                const adapter = type === 'D1'
+                    ? new D1Database(env.D1)
+                    : new KVAdapter(env.KV, env);
+                const method = adapter[property];
+                if (typeof method !== 'function') throw new Error(`Unsupported database method: ${String(property)}`);
+                return method.apply(adapter, args);
+            });
+        },
+    });
 }
 
 /**
@@ -583,14 +648,14 @@ export function getDatabase(env) {
  * @returns {Object} 配置信息
  */
 export function checkDatabaseConfig(env) {
-    var hasD1 = env.D1 && typeof env.D1.prepare === 'function';
-    var hasKV = env.KV && typeof env.KV.get === 'function';
+    var hasD1 = hasD1Database(env);
+    var hasKV = hasKVDatabase(env);
 
     return {
         hasD1: hasD1,
         hasKV: hasKV,
-        usingD1: hasD1,
-        usingKV: !hasD1 && hasKV,
+        usingD1: !hasKV && hasD1,
+        usingKV: hasKV,
         configured: hasD1 || hasKV
     };
 }
