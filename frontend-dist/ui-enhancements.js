@@ -2578,6 +2578,23 @@
   };
 
   let SETTINGS_SYNC_PENDING = false;
+  let SETTINGS_OBSERVER_STOP_TIMER;
+  const ADMIN_ENHANCEMENTS_READY = () => {
+    if (window.location.pathname !== CURRENT_ADMIN_PATH) return false;
+    if (window.location.hash === '#JSON') return Boolean(document.querySelector('#admin-backup-root'));
+    if (window.location.hash === '#File') return Boolean(document.querySelector('#admin-file-root'));
+    const ADMIN_PAGE = document.querySelector('.admin-settings-page');
+    return Boolean(ADMIN_PAGE?.querySelector('.admin-panel-heading-row')
+      && ADMIN_PAGE.querySelector('.admin-default-upload-channel-panel')
+      && !ADMIN_PAGE.querySelector('.security-settings'));
+  };
+  const SCHEDULE_SETTINGS_OBSERVER_STOP = () => {
+    if (!ADMIN_ENHANCEMENTS_READY()) return;
+    window.clearTimeout(SETTINGS_OBSERVER_STOP_TIMER);
+    SETTINGS_OBSERVER_STOP_TIMER = window.setTimeout(() => {
+      if (ADMIN_ENHANCEMENTS_READY()) SETTINGS_OBSERVER.disconnect();
+    }, 1200);
+  };
   const SETTINGS_OBSERVER = new MutationObserver(() => {
     if (SETTINGS_SYNC_PENDING) return;
     SETTINGS_SYNC_PENDING = true;
@@ -2588,12 +2605,16 @@
       SETTINGS_OBSERVER.disconnect();
       HIDE_REMOVED_SETTINGS();
       SETTINGS_OBSERVER.observe(document.documentElement, { childList: true, subtree: true });
+      SCHEDULE_SETTINGS_OBSERVER_STOP();
     });
   });
   SETTINGS_OBSERVER.observe(document.documentElement, { childList: true, subtree: true });
-  // Admin enhancements are one-time DOM normalization; stop watching the
-  // entire application after the initial Vue render settles.
-  window.setTimeout(() => SETTINGS_OBSERVER.disconnect(), 1200);
+  // Wait for the custom view to be applied before stopping. On slower Pages
+  // loads, the original Vue tree can mount well after this script executes.
+  window.addEventListener('pagehide', () => {
+    window.clearTimeout(SETTINGS_OBSERVER_STOP_TIMER);
+    SETTINGS_OBSERVER.disconnect();
+  }, { once: true });
   window.addEventListener('hashchange', HIDE_REMOVED_SETTINGS);
   HIDE_REMOVED_SETTINGS();
   let FAILURE_PATCH_ATTEMPTS = 0;
