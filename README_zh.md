@@ -72,7 +72,26 @@ docker compose down
 
 ### Cloudflare Pages
 
-将本仓库连接到 Cloudflare Pages。构建设置为：框架选择 `None`，构建命令填写 `npm ci --omit=dev --omit=optional`，构建输出目录填写 `frontend-dist`。前端静态文件已包含在仓库中；构建命令用于安装 Pages Functions 所需的运行时依赖。若构建命令留空，Functions 打包时会因找不到 npm 依赖而失败。在 Pages 项目的 Settings → Functions → Bindings 中至少配置一个元数据数据库绑定（`KV` 或 `D1`），并配置至少一个图片存储渠道所需的绑定和凭据。KV/D1 用于保存应用配置、图片路径和元数据；R2、Telegram、S3、Discord、Hugging Face、WebDAV 等图片渠道用于存放实际图片文件。只有选择 R2 作为图片渠道时才需要绑定 R2 存储桶。还需配置所选渠道要求的环境变量。每次推送到生产分支后，Pages 会自动重新部署。
+将本仓库连接到 Cloudflare Pages，并使用以下构建设置：
+
+- **框架预设：**
+
+  ```text
+  None
+  ```
+- **构建命令：**
+
+  ```sh
+  npm ci --omit=dev --omit=optional
+  ```
+
+- **构建输出目录：**
+
+  ```text
+  frontend-dist
+  ```
+
+前端静态文件已包含在仓库中；构建命令用于安装 Pages Functions 所需的运行时依赖。若构建命令留空，Functions 打包时会因找不到 npm 依赖而失败。在 Pages 项目的 Settings → Functions → Bindings 中至少配置一个元数据数据库绑定（`KV` 或 `D1`），并配置至少一个图片存储渠道所需的绑定和凭据。KV/D1 用于保存应用配置、图片路径和元数据；R2、Telegram、S3、Discord、Hugging Face、WebDAV 等图片渠道用于存放实际图片文件。只有选择 R2 作为图片渠道时才需要绑定 R2 存储桶。还需配置所选渠道要求的环境变量。每次推送到生产分支后，Pages 会自动重新部署。
 
 D1 数据表会在首次使用时自动创建，无需手动执行 SQL。KV 和 D1 同时绑定时，首次默认使用 KV；可在“备份与迁移 → 更改存储”中自动复制并核对数据后切换。核对通过后，原数据库会自动清空。R2 或其他渠道中的图片文件不会移动。
 

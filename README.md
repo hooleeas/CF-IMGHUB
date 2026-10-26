@@ -72,7 +72,26 @@ docker compose down
 
 ### Cloudflare Pages
 
-Connect this repository to Cloudflare Pages with `None` as the framework preset, `npm ci --omit=dev --omit=optional` as the build command, and `frontend-dist` as the build output directory. The frontend assets are already included in the repository; the build command installs the runtime dependencies required to bundle Pages Functions. Leaving the build command empty causes Functions bundling to fail because npm dependencies are unavailable. In Pages → Settings → Functions → Bindings, configure at least one metadata database binding (`KV` or `D1`) and configure the credentials and bindings for at least one image storage provider. KV/D1 store application configuration, image paths, and metadata; image providers such as R2, Telegram, S3, Discord, Hugging Face, and WebDAV store the actual image files. R2 is required only when you choose R2 as your image provider. Add the environment variables required by the selected provider. Pages deploys automatically after pushes to the production branch.
+Connect this repository to Cloudflare Pages with these build settings:
+
+- **Framework preset:**
+
+  ```text
+  None
+  ```
+- **Build command:**
+
+  ```sh
+  npm ci --omit=dev --omit=optional
+  ```
+
+- **Build output directory:**
+
+  ```text
+  frontend-dist
+  ```
+
+The frontend assets are already included in the repository; the build command installs the runtime dependencies required to bundle Pages Functions. Leaving the build command empty causes Functions bundling to fail because npm dependencies are unavailable. In Pages → Settings → Functions → Bindings, configure at least one metadata database binding (`KV` or `D1`) and configure the credentials and bindings for at least one image storage provider. KV/D1 store application configuration, image paths, and metadata; image providers such as R2, Telegram, S3, Discord, Hugging Face, and WebDAV store the actual image files. R2 is required only when you choose R2 as your image provider. Add the environment variables required by the selected provider. Pages deploys automatically after pushes to the production branch.
 
 D1 tables are created automatically on first use. When both KV and D1 are bound, KV is selected initially; use **Backup & Migration → Change storage** to copy and verify metadata before switching. After verification, the old database is cleared automatically. Image files in R2 or other providers are not moved.
 
