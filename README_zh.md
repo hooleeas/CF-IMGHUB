@@ -10,7 +10,7 @@
 - 支持 Telegram、Discord、Cloudflare R2、S3、Hugging Face 和 WebDAV 等存储渠道。
 - 使用 KV 或 D1 保存应用配置、图片路径和元数据，与图片文件存储相互独立。
 - 可在管理面板中配置访问控制和站点设置。
-- 支持 Docker、Cloudflare Pages 和 Cloudflare Workers 部署。
+- 支持 Docker 和 Cloudflare Pages 部署。
 
 功能说明和详细部署指南请参阅[项目文档](https://cfbed.sanyue.de)。
 
@@ -72,32 +72,29 @@ docker compose down
 
 ### Cloudflare Pages
 
-将本仓库连接到 Cloudflare Pages，并使用以下构建设置：
+1. Fork 本仓库，在 Cloudflare Pages 中连接你的 Fork。
+2. 填写构建设置：
+   - **框架预设：**
 
-- **框架预设：**
+     ```text
+     None
+     ```
+   - **构建命令：**
 
-  ```text
-  None
-  ```
-- **构建命令：**
+     ```sh
+     npm ci --omit=dev --omit=optional
+     ```
+   - **构建输出目录：**
 
-  ```sh
-  npm ci --omit=dev --omit=optional
-  ```
+     ```text
+     frontend-dist
+     ```
 
-- **构建输出目录：**
-
-  ```text
-  frontend-dist
-  ```
-
-前端静态文件已包含在仓库中；构建命令用于安装 Pages Functions 所需的运行时依赖。若构建命令留空，Functions 打包时会因找不到 npm 依赖而失败。在 Pages 项目的 Settings → Functions → Bindings 中至少配置一个元数据数据库绑定（`KV` 或 `D1`），并配置至少一个图片存储渠道所需的绑定和凭据。KV/D1 用于保存应用配置、图片路径和元数据；R2、Telegram、S3、Discord、Hugging Face、WebDAV 等图片渠道用于存放实际图片文件。只有选择 R2 作为图片渠道时才需要绑定 R2 存储桶。还需配置所选渠道要求的环境变量。每次推送到生产分支后，Pages 会自动重新部署。
+3. 绑定一个元数据数据库：选择 KV 或 D1，绑定名称必须分别为 `KV` 或 `D1`。
+4. 在管理面板添加图片存储渠道。若选择 R2，还需绑定 R2 存储桶，绑定名称必须为 `R2`；其他渠道按页面提示配置。
+5. 推送到生产分支后，Cloudflare Pages 会自动部署。
 
 D1 数据表会在首次使用时自动创建，无需手动执行 SQL。KV 和 D1 同时绑定时，首次默认使用 KV；可在“备份与迁移 → 更改存储”中自动复制并核对数据后切换。核对通过后，原数据库会自动清空。R2 或其他渠道中的图片文件不会移动。
-
-### Cloudflare Workers
-
-Worker 配置文件位于 [`deploy/worker/wrangler.toml`](./deploy/worker/wrangler.toml)。部署前至少配置一个元数据数据库绑定（`D1` 或 `KV`）和一个图片存储渠道。数据库用于保存应用配置、图片路径和元数据；R2、Telegram、S3、Discord、Hugging Face、WebDAV 等渠道用于存放图片文件。只有选择 R2 作为图片渠道时才需要绑定 R2 存储桶，并配置所选渠道要求的凭据。项目也提供 GitHub Actions 自动部署工作流，所需 Secrets 和工作方式请参阅 [`.github/workflows/deploy-worker.yml`](./.github/workflows/deploy-worker.yml)。
 
 ## 本地开发
 

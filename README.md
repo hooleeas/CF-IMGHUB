@@ -10,7 +10,7 @@
 - Use storage providers including Telegram, Discord, Cloudflare R2, S3, Hugging Face, and WebDAV.
 - Store application configuration and image metadata in KV or D1, separately from image files.
 - Configure access control and site settings from the administration panel.
-- Deploy with Docker, Cloudflare Pages, or Cloudflare Workers.
+- Deploy with Docker or Cloudflare Pages.
 
 For detailed feature and deployment guides, see the [project documentation](https://cfbed.sanyue.de).
 
@@ -72,32 +72,29 @@ docker compose down
 
 ### Cloudflare Pages
 
-Connect this repository to Cloudflare Pages with these build settings:
+1. Fork this repository and connect your fork to Cloudflare Pages.
+2. Enter these build settings:
+   - **Framework preset:**
 
-- **Framework preset:**
+     ```text
+     None
+     ```
+   - **Build command:**
 
-  ```text
-  None
-  ```
-- **Build command:**
+     ```sh
+     npm ci --omit=dev --omit=optional
+     ```
+   - **Build output directory:**
 
-  ```sh
-  npm ci --omit=dev --omit=optional
-  ```
+     ```text
+     frontend-dist
+     ```
 
-- **Build output directory:**
-
-  ```text
-  frontend-dist
-  ```
-
-The frontend assets are already included in the repository; the build command installs the runtime dependencies required to bundle Pages Functions. Leaving the build command empty causes Functions bundling to fail because npm dependencies are unavailable. In Pages → Settings → Functions → Bindings, configure at least one metadata database binding (`KV` or `D1`) and configure the credentials and bindings for at least one image storage provider. KV/D1 store application configuration, image paths, and metadata; image providers such as R2, Telegram, S3, Discord, Hugging Face, and WebDAV store the actual image files. R2 is required only when you choose R2 as your image provider. Add the environment variables required by the selected provider. Pages deploys automatically after pushes to the production branch.
+3. Bind one metadata database: choose KV or D1. The binding name must be `KV` or `D1`, respectively.
+4. Add an image storage provider in the admin panel. If you choose R2, bind the bucket with the name `R2`; configure other providers as prompted.
+5. Push to the production branch. Cloudflare Pages deploys automatically.
 
 D1 tables are created automatically on first use. When both KV and D1 are bound, KV is selected initially; use **Backup & Migration → Change storage** to copy and verify metadata before switching. After verification, the old database is cleared automatically. Image files in R2 or other providers are not moved.
-
-### Cloudflare Workers
-
-The Worker configuration is in [`deploy/worker/wrangler.toml`](./deploy/worker/wrangler.toml). Before deploying, configure one metadata database binding (`D1` or `KV`) and at least one image storage provider. The database stores configuration, image paths, and metadata; providers such as R2, Telegram, S3, Discord, Hugging Face, and WebDAV store image files. Bind an R2 bucket only if you use R2 as an image provider, and configure the selected provider's required credentials. The project also includes a GitHub Actions workflow for Worker deployments; see [`.github/workflows/deploy-worker.yml`](./.github/workflows/deploy-worker.yml) for its required secrets and behavior.
 
 ## Local development
 
