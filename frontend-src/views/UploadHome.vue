@@ -15,6 +15,7 @@ export default {
   data() {
     return {
       selectedUrlForm: ref(''),
+      initializingSettings: true,
       showUrlDialog: false,
       showCompressDialog: false,
       customerCompress: true,
@@ -49,11 +50,17 @@ export default {
     };
   },
   watch: {
+    userConfig(config) {
+      if (!config) return;
+      this.applyUserConfigDefaults(config);
+      this.applyDefaultChannel();
+      this.showFirstVisitAnnouncement(config.announcement);
+    },
     customerCompress(val) {
-      this.updateCompressConfig('customerCompress', val);
+      if (!this.initializingSettings) this.updateCompressConfig('customerCompress', val);
     },
     compressQuality(val) {
-      this.updateCompressConfig('compressQuality', val);
+      if (!this.initializingSettings) this.updateCompressConfig('compressQuality', val);
     },
     compressBar(val) {
       // 确保值在有效范围内
@@ -65,13 +72,13 @@ export default {
       if (this.compressQuality > val) {
         this.compressQuality = val;
       }
-      this.updateCompressConfig('compressBar', val);
+      if (!this.initializingSettings) this.updateCompressConfig('compressBar', val);
     },
     serverCompress(val) {
-      this.updateCompressConfig('serverCompress', val);
+      if (!this.initializingSettings) this.updateCompressConfig('serverCompress', val);
     },
     convertToWebp(val) {
-      this.updateCompressConfig('convertToWebp', val);
+      if (!this.initializingSettings) this.updateCompressConfig('convertToWebp', val);
     },
     uploadChannel(val) {
       this.updateStoreUploadChannel(val);
@@ -84,7 +91,7 @@ export default {
       this.$store.commit('setStoreChannelName', val || '');
     },
     uploadNameType(val) {
-      this.updateStoreUploadNameType(val);
+      if (!this.initializingSettings) this.updateStoreUploadNameType(val);
     },
     customUrlPrefix(val) {
       this.$store.commit('setCustomUrlSettings', {
@@ -146,16 +153,14 @@ export default {
     this.useCustomUrl = this.customUrlSettings.useCustomUrl;
     // 读取用户偏好的上传方式
     this.uploadMethod = this.storeUploadMethod;
+    this.$nextTick(() => {
+      this.initializingSettings = false;
+      if (this.userConfig) this.applyUserConfigDefaults(this.userConfig);
+    });
     // 获取可用渠道列表
     this.fetchAvailableChannels();
     // 首次访问公告
-    const visited = localStorage.getItem('visitedUploadHome');
-    const announcement = this.userConfig?.announcement;
-    if (!visited && announcement) {
-      this.announcementContent = announcement;
-      this.showAnnouncementDialog = true;
-      localStorage.setItem('visitedUploadHome', 'true');
-    }
+    this.showFirstVisitAnnouncement(this.userConfig?.announcement);
   },
   components: {
     UploadForm,
@@ -170,20 +175,45 @@ export default {
         });
         if (response.data) {
           this.availableChannels = response.data;
-          const defaultChannelId = this.userConfig?.defaultChannelId;
-          if (defaultChannelId) {
-            const match = Object.entries(this.availableChannels)
-              .flatMap(([type, channels]) => channels.map(channel => ({ ...channel, type })))
-              .find(channel => channel.id === defaultChannelId);
-            if (match) {
-              this.uploadChannel = match.type;
-              this.channelName = match.name;
-            }
-          }
+          this.applyDefaultChannel();
         }
       } catch (error) {
         console.error('Failed to fetch available channels:', error);
       }
+    },
+    applyDefaultChannel() {
+      const defaultChannelId = this.userConfig?.defaultChannelId;
+      if (!defaultChannelId || this.storeUploadChannel) return;
+      const match = Object.entries(this.availableChannels)
+        .flatMap(([type, channels]) => channels.map(channel => ({ ...channel, type })))
+        .find(channel => channel.id === defaultChannelId);
+      if (match) {
+        this.uploadChannel = match.type;
+        this.channelName = match.name;
+      }
+    },
+    applyUserConfigDefaults(config) {
+      if (this.compressConfig.customerCompress === undefined) {
+        this.customerCompress = this.parseBoolean(config.defaultCustomerCompress, true);
+      }
+      if (this.compressConfig.compressQuality === undefined) {
+        this.compressQuality = this.parseNumber(config.defaultCompressQuality, 4);
+      }
+      if (this.compressConfig.compressBar === undefined) {
+        this.compressBar = this.parseNumber(config.defaultCompressBar, 5);
+      }
+      if (this.compressConfig.convertToWebp === undefined) {
+        this.convertToWebp = this.parseBoolean(config.defaultConvertToWebp, false);
+      }
+      if (!this.storeUploadNameType) {
+        this.uploadNameType = config.defaultUploadNameType || 'default';
+      }
+    },
+    showFirstVisitAnnouncement(announcement) {
+      if (!announcement || localStorage.getItem('visitedUploadHome')) return;
+      this.announcementContent = announcement;
+      this.showAnnouncementDialog = true;
+      localStorage.setItem('visitedUploadHome', 'true');
     },
     handleManage() {
       this.$router.push('/admin');

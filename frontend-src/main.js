@@ -1,5 +1,4 @@
 import { createApp } from 'vue'
-import { createHead } from '@vueuse/head'; // 导入 createHead
 import ElementPlus from 'element-plus'
 import 'element-plus/es/components/message/style/css'
 import 'element-plus/es/components/message-box/style/css'
@@ -24,8 +23,6 @@ import 'overlayscrollbars/overlayscrollbars.css'
 library.add(...fontAwesomeIcons);
 
 const app = createApp(App);
-const head = createHead(); // 创建 head 对象
-
 app.component('font-awesome-icon', FontAwesomeIcon);
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
     app.component(key, component)
@@ -43,9 +40,7 @@ if (SYSTEM_THEME.addEventListener) {
     SYSTEM_THEME.addListener(applySystemTheme);
 }
 
-store.dispatch('fetchUserConfig').then(() => {
-    app.use(store).use(router).use(ElementPlus).use(i18n).mount('#app');
-}).catch(error => {
+app.use(store).use(router).use(ElementPlus).use(i18n).mount('#app');
+store.dispatch('fetchUserConfig').catch(error => {
     console.error('Failed to load user configuration:', error);
-    app.use(store).use(router).use(ElementPlus).use(i18n).use(head).mount('#app');
-})
+});
