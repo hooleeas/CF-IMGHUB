@@ -501,10 +501,11 @@ body.admin-layout #app {
 }
 .standalone-language-toggle { flex: 0 0 auto; min-width: 64px; }
 .standalone-login-page { box-sizing:border-box; display:grid; min-height:100vh; padding:24px; place-items:center; }
-.standalone-login-card { box-sizing:border-box; display:grid; gap:16px; width:min(440px,100%); padding:clamp(24px,5vw,40px); border:1px solid var(--ADMIN-LINE,#dbe2ec); border-radius:24px; color:var(--ADMIN-INK,#202124); background:var(--ADMIN-SURFACE,#fff); box-shadow:var(--ADMIN-SHADOW,0 18px 55px rgba(0,0,0,.12)); }
+.standalone-login-card { position:relative; box-sizing:border-box; display:grid; gap:16px; width:min(440px,100%); padding:clamp(24px,5vw,40px); border:1px solid var(--ADMIN-LINE,#dbe2ec); border-radius:24px; color:var(--ADMIN-INK,#202124); background:var(--ADMIN-SURFACE,#fff); box-shadow:var(--ADMIN-SHADOW,0 18px 55px rgba(0,0,0,.12)); }
+.standalone-login-page > .standalone-login-card .standalone-language-toggle { position:fixed; z-index:10; top:24px; right:24px; }
 .standalone-login-heading h1 { margin:0; font-size:clamp(24px,5vw,34px); }
 .standalone-login-heading p { margin:8px 0 0; color:var(--ADMIN-MUTED,#687386); }
-.standalone-login-card label { display:grid; gap:8px; font-weight:600; }
+.standalone-login-card label { display:grid; gap:8px; font-weight:600; text-align:left; }
 .standalone-login-card input { box-sizing:border-box; width:100%; min-height:46px; padding:10px 12px; border:1px solid var(--ADMIN-LINE,#cbd5e1); border-radius:10px; color:inherit; background:var(--ADMIN-SURFACE,#fff); font:inherit; }
 .standalone-login-card button[type=submit] { min-height:46px; }
 .standalone-login-error { min-height:1.25em; margin:0; color:#c53030; }
